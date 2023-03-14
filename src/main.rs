@@ -54,13 +54,13 @@ async fn main() -> anyhow::Result<()> {
                         &vocab,
                         &llama_rs::InferenceParams {
                             n_threads: thread_count,
-                            n_predict: 128,
-                            n_batch: 8,
-                            top_k: 40,
-                            top_p: 0.95,
-                            repeat_last_n: 64,
-                            repeat_penalty: 1.3,
-                            temp: 0.8,
+                            n_predict: request.maximum_token_count,
+                            n_batch: request.batch_size,
+                            top_k: request.top_k.try_into().unwrap(),
+                            top_p: request.top_p,
+                            repeat_last_n: request.repeat_penalty_last_n_token_count,
+                            repeat_penalty: request.repeat_penalty,
+                            temp: request.temperature,
                         },
                         &request.prompt,
                         &mut rng,
@@ -111,6 +111,13 @@ async fn main() -> anyhow::Result<()> {
 
 struct GenerationRequest {
     prompt: String,
+    maximum_token_count: usize,
+    batch_size: usize,
+    repeat_penalty: f32,
+    repeat_penalty_last_n_token_count: usize,
+    temperature: f32,
+    top_k: usize,
+    top_p: f32,
     token_tx: flume::Sender<Token>,
 }
 
@@ -145,12 +152,66 @@ async fn ready_handler(http: &Http) -> anyhow::Result<()> {
     Command::create_global_application_command(http, |command| {
         command
             .name(&config.commands.hallucinate)
-            .description("Hallucinates some text using a language model")
+            .description("Hallucinates some text using the LLaMA language model.")
             .create_option(|opt| {
                 opt.name(constant::value::PROMPT)
-                    .description("The prompt for the LLM")
+                    .description("The prompt for LLaMA. Note that LLaMA requires autocomplete-like prompts.")
                     .kind(CommandOptionType::String)
                     .required(true)
+            })
+            .create_option(|opt| {
+                opt.name(constant::value::MAXIMUM_TOKEN_COUNT)
+                    .description("The maximum number of tokens to predict.")
+                    .kind(CommandOptionType::Integer)
+                    .min_int_value(0)
+                    .max_int_value(512)
+                    .required(false)
+            })
+            .create_option(|opt| {
+                opt.name(constant::value::BATCH_SIZE)
+                    .kind(CommandOptionType::Integer)
+                    .description("The number of tokens taken from the prompt to feed the network. Does not affect generation.")
+                    .min_int_value(0)
+                    .max_int_value(64)
+                    .required(false)
+            })
+            .create_option(|opt| {
+                opt.name(constant::value::REPEAT_PENALTY)
+                    .kind(CommandOptionType::Number)
+                    .description("The penalty for repeating tokens. Higher values make the generation less likely to get into a loop.")
+                    .min_number_value(0.0)
+                    .required(false)
+            })
+            .create_option(|opt| {
+                opt.name(constant::value::REPEAT_PENALTY_TOKEN_COUNT)
+                    .kind(CommandOptionType::Integer)
+                    .description("Size of the 'last N' buffer that is considered for the repeat penalty (in tokens)")
+                    .min_int_value(0)
+                    .max_int_value(64)
+                    .required(false)
+            })
+            .create_option(|opt| {
+                opt.name(constant::value::TEMPERATURE)
+                    .kind(CommandOptionType::Number)
+                    .description("The temperature used for sampling.")
+                    .min_number_value(0.0)
+                    .required(false)
+            })
+            .create_option(|opt| {
+                opt.name(constant::value::TOP_K)
+                    .kind(CommandOptionType::Integer)
+                    .description("The top K words by score are kept during sampling.")
+                    .min_int_value(0)
+                    .max_int_value(128)
+                    .required(false)
+            })
+            .create_option(|opt| {
+                opt.name(constant::value::TOP_P)
+                    .kind(CommandOptionType::Number)
+                    .description("The cummulative probability after which no more words are kept for sampling.")
+                    .min_number_value(0.0)
+                    .max_number_value(1.0)
+                    .required(false)
             })
     })
     .await?;
@@ -197,14 +258,61 @@ async fn hallucinate(
     http: &Http,
     request_tx: flume::Sender<GenerationRequest>,
 ) -> anyhow::Result<()> {
+    use constant::value as v;
+    use util::{value_to_integer, value_to_number, value_to_string};
+
     cmd.create(http, "Generating...").await?;
 
-    let prompt = util::get_value(&cmd.data.options, constant::value::PROMPT)
-        .and_then(util::value_to_string)
+    let options = &cmd.data.options;
+    let prompt = util::get_value(options, v::PROMPT)
+        .and_then(value_to_string)
         .context("no prompt specified")?;
 
+    let maximum_token_count: usize = util::get_value(options, v::MAXIMUM_TOKEN_COUNT)
+        .and_then(value_to_integer)
+        .unwrap_or(128)
+        .try_into()?;
+
+    let batch_size: usize = util::get_value(options, v::BATCH_SIZE)
+        .and_then(value_to_integer)
+        .unwrap_or(8)
+        .try_into()?;
+
+    let repeat_penalty = util::get_value(options, v::REPEAT_PENALTY)
+        .and_then(value_to_number)
+        .unwrap_or(1.3) as f32;
+
+    let repeat_penalty_last_n_token_count: usize =
+        util::get_value(options, v::REPEAT_PENALTY_TOKEN_COUNT)
+            .and_then(value_to_integer)
+            .unwrap_or(64)
+            .try_into()?;
+
+    let temperature = util::get_value(options, v::TEMPERATURE)
+        .and_then(value_to_number)
+        .unwrap_or(0.8) as f32;
+
+    let top_k: usize = util::get_value(options, v::TOP_K)
+        .and_then(value_to_integer)
+        .unwrap_or(40)
+        .try_into()?;
+
+    let top_p = util::get_value(options, v::TOP_P)
+        .and_then(value_to_number)
+        .unwrap_or(0.95) as f32;
+
     let (token_tx, token_rx) = flume::unbounded();
-    request_tx.send(GenerationRequest { prompt, token_tx })?;
+    request_tx.send(GenerationRequest {
+        prompt,
+        maximum_token_count,
+        batch_size,
+        repeat_penalty,
+        repeat_penalty_last_n_token_count,
+        temperature,
+        top_k,
+        top_p,
+        token_tx,
+    })?;
 
     let last_update_duration = std::time::Duration::from_millis(
         Configuration::get()
