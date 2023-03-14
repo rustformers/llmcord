@@ -263,10 +263,18 @@ async fn hallucinate(
 
     cmd.create(http, "Generating...").await?;
 
+    let inference = &Configuration::get().inference;
+
     let options = &cmd.data.options;
     let prompt = util::get_value(options, v::PROMPT)
         .and_then(value_to_string)
         .context("no prompt specified")?;
+
+    let prompt = if inference.replace_newlines {
+        prompt.replace("\\n", "\n")
+    } else {
+        prompt
+    };
 
     let maximum_token_count: usize = util::get_value(options, v::MAXIMUM_TOKEN_COUNT)
         .and_then(value_to_integer)
@@ -314,11 +322,8 @@ async fn hallucinate(
         token_tx,
     })?;
 
-    let last_update_duration = std::time::Duration::from_millis(
-        Configuration::get()
-            .inference
-            .discord_message_update_interval_ms,
-    );
+    let last_update_duration =
+        std::time::Duration::from_millis(inference.discord_message_update_interval_ms);
 
     let mut message = String::new();
     let mut ended = false;

@@ -76,12 +76,15 @@ pub struct Inference {
     pub thread_count: usize,
     /// Low values will result in you getting throttled by Discord
     pub discord_message_update_interval_ms: u64,
+    /// Whether or not to replace '\n' with newlines
+    pub replace_newlines: bool,
 }
 impl Default for Inference {
     fn default() -> Self {
         Self {
             thread_count: 8,
             discord_message_update_interval_ms: 250,
+            replace_newlines: true,
         }
     }
 }
