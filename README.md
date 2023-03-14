@@ -1,5 +1,7 @@
 # llamacord
 
+![llamacord logo: a vaguely Discord Clyde-looking llama](docs/llamacord.png)
+
 A Discord bot, written in Rust, that generates responses using the LLaMA language model.
 
 Built on top of [llama-rs](https://github.com/setzer22/llama-rs).
