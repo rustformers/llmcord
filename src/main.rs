@@ -270,6 +270,12 @@ async fn hallucinate(
         .and_then(value_to_string)
         .context("no prompt specified")?;
 
+    let prompt = if inference.replace_newlines {
+        prompt.replace("\\n", "\n")
+    } else {
+        prompt
+    };
+
     cmd.create_interaction_response(http, |response| {
         response
             .kind(InteractionResponseType::ChannelMessageWithSource)
@@ -280,12 +286,6 @@ async fn hallucinate(
             })
     })
     .await?;
-
-    let prompt = if inference.replace_newlines {
-        prompt.replace("\\n", "\n")
-    } else {
-        prompt
-    };
 
     let maximum_token_count: usize = util::get_value(options, v::MAXIMUM_TOKEN_COUNT)
         .and_then(value_to_integer)
