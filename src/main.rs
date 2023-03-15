@@ -351,7 +351,13 @@ async fn hallucinate(
         let output = match message.strip_prefix(prompt) {
             Some(msg) => format!("**{prompt}**{msg}"),
             None => match prompt.strip_prefix(message) {
-                Some(ungenerated) => format!("**{message}**~~{ungenerated}~~"),
+                Some(ungenerated) => {
+                    if message.is_empty() {
+                        format!("~~{ungenerated}~~")
+                    } else {
+                        format!("**{message}**~~{ungenerated}~~")
+                    }
+                }
                 None => message.to_string(),
             },
         };
