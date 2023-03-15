@@ -263,23 +263,23 @@ async fn hallucinate(
     use constant::value as v;
     use util::{value_to_integer, value_to_number, value_to_string};
 
-    cmd.create_interaction_response(http, |response| {
-        response
-            .kind(InteractionResponseType::ChannelMessageWithSource)
-            .interaction_response_data(|message| {
-                message
-                    .content("Generating...")
-                    .allowed_mentions(|m| m.empty_roles().empty_users().empty_parse())
-            })
-    })
-    .await?;
-
     let inference = &Configuration::get().inference;
 
     let options = &cmd.data.options;
     let prompt = util::get_value(options, v::PROMPT)
         .and_then(value_to_string)
         .context("no prompt specified")?;
+
+    cmd.create_interaction_response(http, |response| {
+        response
+            .kind(InteractionResponseType::ChannelMessageWithSource)
+            .interaction_response_data(|message| {
+                message
+                    .content(format!("~~{prompt}~~"))
+                    .allowed_mentions(|m| m.empty_roles().empty_users().empty_parse())
+            })
+    })
+    .await?;
 
     let prompt = if inference.replace_newlines {
         prompt.replace("\\n", "\n")
@@ -322,7 +322,7 @@ async fn hallucinate(
 
     let (token_tx, token_rx) = flume::unbounded();
     request_tx.send(GenerationRequest {
-        prompt,
+        prompt: prompt.clone(),
         maximum_token_count,
         batch_size,
         repeat_penalty,
@@ -341,6 +341,28 @@ async fn hallucinate(
 
     let mut stream = token_rx.into_stream();
     let mut last_update = std::time::Instant::now();
+
+    async fn update_msg(
+        cmd: &ApplicationCommandInteraction,
+        http: &Http,
+        message: &str,
+        prompt: &str,
+    ) -> anyhow::Result<()> {
+        let output = match message.strip_prefix(prompt) {
+            Some(msg) => format!("**{prompt}**{msg}"),
+            None => match prompt.strip_prefix(message) {
+                Some(ungenerated) => format!("**{message}**~~{ungenerated}~~"),
+                None => message.to_string(),
+            },
+        };
+
+        if !output.is_empty() {
+            cmd.edit(http, &output).await?;
+        }
+
+        Ok(())
+    }
+
     while let Some(token) = stream.next().await {
         match token {
             Token::Token(t) => {
@@ -351,8 +373,8 @@ async fn hallucinate(
             }
         }
 
-        if last_update.elapsed() > last_update_duration && !message.is_empty() {
-            cmd.edit(http, &message).await?;
+        if last_update.elapsed() > last_update_duration {
+            update_msg(cmd, http, &message, &prompt).await?;
             last_update = std::time::Instant::now();
         }
     }
@@ -360,9 +382,7 @@ async fn hallucinate(
         message += " [generation ended before message end]";
     }
 
-    if !message.is_empty() {
-        cmd.edit(http, &message).await?;
-    }
+    update_msg(cmd, http, &message, &prompt).await?;
 
     Ok(())
 }
