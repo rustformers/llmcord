@@ -8,7 +8,9 @@ use serenity::{
         application::interaction::Interaction,
         prelude::{
             command::{Command, CommandOptionType},
-            interaction::application_command::ApplicationCommandInteraction,
+            interaction::{
+                application_command::ApplicationCommandInteraction, InteractionResponseType,
+            },
             *,
         },
     },
@@ -261,7 +263,16 @@ async fn hallucinate(
     use constant::value as v;
     use util::{value_to_integer, value_to_number, value_to_string};
 
-    cmd.create(http, "Generating...").await?;
+    cmd.create_interaction_response(http, |response| {
+        response
+            .kind(InteractionResponseType::ChannelMessageWithSource)
+            .interaction_response_data(|message| {
+                message
+                    .content("Generating...")
+                    .allowed_mentions(|m| m.empty_roles().empty_users().empty_parse())
+            })
+    })
+    .await?;
 
     let inference = &Configuration::get().inference;
 
