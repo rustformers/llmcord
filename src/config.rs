@@ -92,16 +92,18 @@ impl Default for Inference {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Commands {
     pub hallucinate: String,
+    pub alpaca: String,
 }
 impl Commands {
     pub fn all(&self) -> HashSet<&str> {
-        HashSet::from_iter([self.hallucinate.as_str()])
+        HashSet::from_iter([self.hallucinate.as_str(), self.alpaca.as_str()])
     }
 }
 impl Default for Commands {
     fn default() -> Self {
         Self {
             hallucinate: "hallucinate".to_string(),
+            alpaca: "alpaca".to_string(),
         }
     }
 }

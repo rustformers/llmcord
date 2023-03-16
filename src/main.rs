@@ -153,73 +153,87 @@ async fn ready_handler(http: &Http) -> anyhow::Result<()> {
     }
 
     Command::create_global_application_command(http, |command| {
-        command
-            .name(&config.commands.hallucinate)
-            .description("Hallucinates some text using the LLaMA language model.")
-            .create_option(|opt| {
-                opt.name(constant::value::PROMPT)
-                    .description("The prompt for LLaMA. Note that LLaMA requires autocomplete-like prompts.")
-                    .kind(CommandOptionType::String)
-                    .required(true)
-            })
-            .create_option(|opt| {
-                opt.name(constant::value::MAXIMUM_TOKEN_COUNT)
-                    .description("The maximum number of tokens to predict.")
-                    .kind(CommandOptionType::Integer)
-                    .min_int_value(0)
-                    .max_int_value(512)
-                    .required(false)
-            })
-            .create_option(|opt| {
-                opt.name(constant::value::BATCH_SIZE)
-                    .kind(CommandOptionType::Integer)
-                    .description("The number of tokens taken from the prompt to feed the network. Does not affect generation.")
-                    .min_int_value(0)
-                    .max_int_value(64)
-                    .required(false)
-            })
-            .create_option(|opt| {
-                opt.name(constant::value::REPEAT_PENALTY)
-                    .kind(CommandOptionType::Number)
-                    .description("The penalty for repeating tokens. Higher values make the generation less likely to get into a loop.")
-                    .min_number_value(0.0)
-                    .required(false)
-            })
-            .create_option(|opt| {
-                opt.name(constant::value::REPEAT_PENALTY_TOKEN_COUNT)
-                    .kind(CommandOptionType::Integer)
-                    .description("Size of the 'last N' buffer that is considered for the repeat penalty (in tokens)")
-                    .min_int_value(0)
-                    .max_int_value(64)
-                    .required(false)
-            })
-            .create_option(|opt| {
-                opt.name(constant::value::TEMPERATURE)
-                    .kind(CommandOptionType::Number)
-                    .description("The temperature used for sampling.")
-                    .min_number_value(0.0)
-                    .required(false)
-            })
-            .create_option(|opt| {
-                opt.name(constant::value::TOP_K)
-                    .kind(CommandOptionType::Integer)
-                    .description("The top K words by score are kept during sampling.")
-                    .min_int_value(0)
-                    .max_int_value(128)
-                    .required(false)
-            })
-            .create_option(|opt| {
-                opt.name(constant::value::TOP_P)
-                    .kind(CommandOptionType::Number)
-                    .description("The cummulative probability after which no more words are kept for sampling.")
-                    .min_number_value(0.0)
-                    .max_number_value(1.0)
-                    .required(false)
-            })
+        create_parameters(
+            command
+                .name(&config.commands.hallucinate)
+                .description("Hallucinates some text using the LLaMA language model."),
+        )
+    })
+    .await?;
+
+    Command::create_global_application_command(http, |command| {
+        create_parameters(command.name(&config.commands.alpaca).description(
+            "Hallucinates some text using the LLaMA language model and the Alpaca prompt.",
+        ))
     })
     .await?;
 
     Ok(())
+}
+
+fn create_parameters<'a>(
+    command: &'a mut serenity::builder::CreateApplicationCommand,
+) -> &'a mut serenity::builder::CreateApplicationCommand {
+    command.create_option(|opt| {
+            opt.name(constant::value::PROMPT)
+                .description("The prompt for LLaMA. Note that LLaMA requires autocomplete-like prompts.")
+                .kind(CommandOptionType::String)
+                .required(true)
+        })
+        .create_option(|opt| {
+            opt.name(constant::value::MAXIMUM_TOKEN_COUNT)
+                .description("The maximum number of tokens to predict.")
+                .kind(CommandOptionType::Integer)
+                .min_int_value(0)
+                .max_int_value(512)
+                .required(false)
+        })
+        .create_option(|opt| {
+            opt.name(constant::value::BATCH_SIZE)
+                .kind(CommandOptionType::Integer)
+                .description("The number of tokens taken from the prompt to feed the network. Does not affect generation.")
+                .min_int_value(0)
+                .max_int_value(64)
+                .required(false)
+        })
+        .create_option(|opt| {
+            opt.name(constant::value::REPEAT_PENALTY)
+                .kind(CommandOptionType::Number)
+                .description("The penalty for repeating tokens. Higher values make the generation less likely to get into a loop.")
+                .min_number_value(0.0)
+                .required(false)
+        })
+        .create_option(|opt| {
+            opt.name(constant::value::REPEAT_PENALTY_TOKEN_COUNT)
+                .kind(CommandOptionType::Integer)
+                .description("Size of the 'last N' buffer that is considered for the repeat penalty (in tokens)")
+                .min_int_value(0)
+                .max_int_value(64)
+                .required(false)
+        })
+        .create_option(|opt| {
+            opt.name(constant::value::TEMPERATURE)
+                .kind(CommandOptionType::Number)
+                .description("The temperature used for sampling.")
+                .min_number_value(0.0)
+                .required(false)
+        })
+        .create_option(|opt| {
+            opt.name(constant::value::TOP_K)
+                .kind(CommandOptionType::Integer)
+                .description("The top K words by score are kept during sampling.")
+                .min_int_value(0)
+                .max_int_value(128)
+                .required(false)
+        })
+        .create_option(|opt| {
+            opt.name(constant::value::TOP_P)
+                .kind(CommandOptionType::Number)
+                .description("The cummulative probability after which no more words are kept for sampling.")
+                .min_number_value(0.0)
+                .max_number_value(1.0)
+                .required(false)
+        })
 }
 
 #[async_trait]
@@ -246,7 +260,14 @@ impl EventHandler for Handler {
                     run_and_report_error(
                         &cmd,
                         &http,
-                        hallucinate(&cmd, &http, self.request_tx.clone()),
+                        hallucinate(&cmd, &http, self.request_tx.clone(), false),
+                    )
+                    .await;
+                } else if name == commands.alpaca {
+                    run_and_report_error(
+                        &cmd,
+                        &http,
+                        hallucinate(&cmd, &http, self.request_tx.clone(), true),
                     )
                     .await;
                 }
@@ -260,6 +281,7 @@ async fn hallucinate(
     cmd: &ApplicationCommandInteraction,
     http: &Http,
     request_tx: flume::Sender<GenerationRequest>,
+    alpaca_format: bool,
 ) -> anyhow::Result<()> {
     use constant::value as v;
     use util::{value_to_integer, value_to_number, value_to_string};
@@ -273,6 +295,12 @@ async fn hallucinate(
 
     let prompt = if inference.replace_newlines {
         prompt.replace("\\n", "\n")
+    } else {
+        prompt
+    };
+
+    let prompt = if alpaca_format {
+        format!("Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n\n{prompt}\n\n### Response:\n")
     } else {
         prompt
     };
