@@ -43,6 +43,7 @@ async fn main() -> anyhow::Result<()> {
             let (model, vocab) = llama_rs::Model::load(
                 &config.model.path,
                 config.model.context_token_length.try_into().unwrap(),
+                |_| {},
             )
             .unwrap();
 
@@ -54,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
                     let token_tx = request.token_tx;
                     model.inference_with_prompt(
                         &vocab,
-                        &llama_rs::InferenceParams {
+                        &llama_rs::InferenceParameters {
                             n_threads: thread_count,
                             n_predict: request.maximum_token_count,
                             n_batch: request.batch_size,
