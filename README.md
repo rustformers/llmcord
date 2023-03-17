@@ -26,7 +26,6 @@ Built on top of [llama-rs](https://github.com/setzer22/llama-rs).
 #### Application
 
 - Install Rust 1.68 or above using `rustup`.
-- Set the `RUSTFLAGS='-C target-feature=+avx2,+fma,+f16c'` environment variable before building for maximal optimisation.
 - Run `cargo run --release` to start llamacord. This will auto-generate a configuration file, and then quit.
 - Fill in the configuration file with the required details, including the path to the quantized model.
 - You can then run llamacord to your heart's content.
