@@ -1,7 +1,6 @@
 /// names of values used in interactions
 pub mod value {
     pub const PROMPT: &str = "prompt";
-    pub const MAXIMUM_TOKEN_COUNT: &str = "maximum_token_count";
     pub const BATCH_SIZE: &str = "batch_size";
     pub const REPEAT_PENALTY: &str = "repeat_penalty";
     pub const REPEAT_PENALTY_TOKEN_COUNT: &str = "repeat_penalty_token_count";

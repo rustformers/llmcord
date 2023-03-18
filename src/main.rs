@@ -39,6 +39,50 @@ async fn main() -> anyhow::Result<()> {
     let barrier = Arc::new(Barrier::new(2));
     let model_thread = std::thread::spawn({
         let barrier = barrier.clone();
+
+        fn process_token(
+            token_tx: &flume::Sender<Token>,
+            token: llama_rs::OutputToken,
+        ) -> anyhow::Result<()> {
+            token_tx
+                .send(match token {
+                    llama_rs::OutputToken::Token(t) => Token::Token(t.to_string()),
+                    llama_rs::OutputToken::EndOfText => Token::EndOfText,
+                })
+                .ok()
+                .context("send error")
+        }
+
+        fn process_incoming_request(
+            request: &GenerationRequest,
+            model: &llama_rs::Model,
+            vocab: &llama_rs::Vocabulary,
+            thread_count: i32,
+            rng: &mut impl rand::Rng,
+        ) -> anyhow::Result<()> {
+            let mut session = model.start_session(request.repeat_penalty_last_n_token_count);
+
+            let params = llama_rs::InferenceParameters {
+                n_threads: thread_count,
+                n_predict: 0,
+                n_batch: request.batch_size,
+                top_k: request.top_k.try_into()?,
+                top_p: request.top_p,
+                repeat_penalty: request.repeat_penalty,
+                temp: request.temperature,
+            };
+
+            session.feed_prompt(&model, &vocab, &params, &request.prompt, |t| {
+                process_token(&request.token_tx, t).unwrap()
+            })?;
+
+            while let Ok(token) = session.infer_next_token(&model, &vocab, &params, rng) {
+                process_token(&request.token_tx, token)?;
+            }
+
+            Ok(())
+        }
+
         move || {
             let (model, vocab) = llama_rs::Model::load(
                 &config.model.path,
@@ -52,36 +96,12 @@ async fn main() -> anyhow::Result<()> {
             let mut rng = rand::thread_rng();
             loop {
                 if let Ok(request) = request_rx.try_recv() {
-                    let token_tx = request.token_tx;
-                    model.inference_with_prompt(
-                        &vocab,
-                        &llama_rs::InferenceParameters {
-                            n_threads: thread_count,
-                            n_predict: request.maximum_token_count,
-                            n_batch: request.batch_size,
-                            top_k: request.top_k.try_into().unwrap(),
-                            top_p: request.top_p,
-                            repeat_last_n: request.repeat_penalty_last_n_token_count,
-                            repeat_penalty: request.repeat_penalty,
-                            temp: request.temperature,
-                        },
-                        &request.prompt,
-                        &mut rng,
-                        {
-                            let token_tx = token_tx.clone();
-                            move |t| {
-                                token_tx
-                                    .send(match t {
-                                        llama_rs::OutputToken::Token(t) => {
-                                            Token::Token(t.to_string())
-                                        }
-                                        llama_rs::OutputToken::EndOfText => Token::EndOfText,
-                                    })
-                                    .unwrap();
-                            }
-                        },
-                    );
-                };
+                    match process_incoming_request(&request, &model, &vocab, thread_count, &mut rng)
+                    {
+                        Ok(_) => {}
+                        Err(e) => request.token_tx.send(Token::Error(e.to_string())).unwrap(),
+                    }
+                }
 
                 std::thread::sleep(std::time::Duration::from_millis(5));
             }
@@ -114,7 +134,6 @@ async fn main() -> anyhow::Result<()> {
 
 struct GenerationRequest {
     prompt: String,
-    maximum_token_count: usize,
     batch_size: usize,
     repeat_penalty: f32,
     repeat_penalty_last_n_token_count: usize,
@@ -127,6 +146,7 @@ struct GenerationRequest {
 enum Token {
     Token(String),
     EndOfText,
+    Error(String),
 }
 
 struct Handler {
@@ -179,14 +199,6 @@ fn create_parameters<'a>(
                 .description("The prompt for LLaMA. Note that LLaMA requires autocomplete-like prompts.")
                 .kind(CommandOptionType::String)
                 .required(true)
-        })
-        .create_option(|opt| {
-            opt.name(constant::value::MAXIMUM_TOKEN_COUNT)
-                .description("The maximum number of tokens to predict.")
-                .kind(CommandOptionType::Integer)
-                .min_int_value(0)
-                .max_int_value(512)
-                .required(false)
         })
         .create_option(|opt| {
             opt.name(constant::value::BATCH_SIZE)
@@ -316,11 +328,6 @@ async fn hallucinate(
     })
     .await?;
 
-    let maximum_token_count: usize = util::get_value(options, v::MAXIMUM_TOKEN_COUNT)
-        .and_then(value_to_integer)
-        .unwrap_or(128)
-        .try_into()?;
-
     let batch_size: usize = util::get_value(options, v::BATCH_SIZE)
         .and_then(value_to_integer)
         .unwrap_or(8)
@@ -352,7 +359,6 @@ async fn hallucinate(
     let (token_tx, token_rx) = flume::unbounded();
     request_tx.send(GenerationRequest {
         prompt: prompt.clone(),
-        maximum_token_count,
         batch_size,
         repeat_penalty,
         repeat_penalty_last_n_token_count,
@@ -405,6 +411,11 @@ async fn hallucinate(
             }
             Token::EndOfText => {
                 ended = true;
+            }
+            Token::Error(err) => {
+                message = format!("Error: {err}");
+                ended = true;
+                break;
             }
         }
 
