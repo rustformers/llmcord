@@ -61,12 +61,14 @@ impl Default for Authentication {
 pub struct Model {
     pub path: String,
     pub context_token_length: usize,
+    pub is_alpaca: bool,
 }
 impl Default for Model {
     fn default() -> Self {
         Self {
             path: "models/7B/ggml-model-q4_0.bin".to_string(),
             context_token_length: 512,
+            is_alpaca: false,
         }
     }
 }
@@ -95,8 +97,12 @@ pub struct Commands {
     pub alpaca: String,
 }
 impl Commands {
-    pub fn all(&self) -> HashSet<&str> {
-        HashSet::from_iter([self.hallucinate.as_str(), self.alpaca.as_str()])
+    pub fn all(&self, alpaca_enabled: bool) -> HashSet<&str> {
+        if alpaca_enabled {
+            HashSet::from_iter([self.alpaca.as_str()])
+        } else {
+            HashSet::from_iter([self.hallucinate.as_str()])
+        }
     }
 }
 impl Default for Commands {

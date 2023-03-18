@@ -173,7 +173,12 @@ async fn ready_handler(http: &Http) -> anyhow::Result<()> {
         .map(|c| c.name.as_str())
         .collect();
 
-    let our_commands: HashSet<_> = config.commands.all().iter().cloned().collect();
+    let our_commands: HashSet<_> = config
+        .commands
+        .all(config.model.is_alpaca)
+        .iter()
+        .cloned()
+        .collect();
 
     if registered_commands != our_commands {
         // If the commands registered with Discord don't match the commands configured
@@ -182,21 +187,41 @@ async fn ready_handler(http: &Http) -> anyhow::Result<()> {
             .await?;
     }
 
-    Command::create_global_application_command(http, |command| {
-        create_parameters(
+    if config.model.is_alpaca {
+        Command::create_global_application_command(http, |command| {
+            command
+                .name(&config.commands.alpaca)
+                .description(
+                    "Hallucinates some text using the LLaMA language model and the Alpaca prompt.",
+                )
+                .create_option(|opt| {
+                    opt.name(constant::value::PROMPT)
+                        .description("The prompt for Alpaca.")
+                        .kind(CommandOptionType::String)
+                        .required(true)
+                });
+
+            create_parameters(command)
+        })
+        .await?;
+    } else {
+        Command::create_global_application_command(http, |command| {
             command
                 .name(&config.commands.hallucinate)
-                .description("Hallucinates some text using the LLaMA language model."),
-        )
-    })
-    .await?;
+                .description("Hallucinates some text using the LLaMA language model.")
+                .create_option(|opt| {
+                    opt.name(constant::value::PROMPT)
+                    .description(
+                        "The prompt for LLaMA. Note that LLaMA requires autocomplete-like prompts.",
+                    )
+                    .kind(CommandOptionType::String)
+                    .required(true)
+                });
 
-    Command::create_global_application_command(http, |command| {
-        create_parameters(command.name(&config.commands.alpaca).description(
-            "Hallucinates some text using the LLaMA language model and the Alpaca prompt.",
-        ))
-    })
-    .await?;
+            create_parameters(command)
+        })
+        .await?;
+    }
 
     Ok(())
 }
@@ -204,12 +229,7 @@ async fn ready_handler(http: &Http) -> anyhow::Result<()> {
 fn create_parameters<'a>(
     command: &'a mut serenity::builder::CreateApplicationCommand,
 ) -> &'a mut serenity::builder::CreateApplicationCommand {
-    command.create_option(|opt| {
-            opt.name(constant::value::PROMPT)
-                .description("The prompt for LLaMA. Note that LLaMA requires autocomplete-like prompts.")
-                .kind(CommandOptionType::String)
-                .required(true)
-        })
+    command
         .create_option(|opt| {
             opt.name(constant::value::BATCH_SIZE)
                 .kind(CommandOptionType::Integer)
