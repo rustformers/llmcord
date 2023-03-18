@@ -18,6 +18,7 @@ use serenity::{
 };
 use std::{
     collections::HashSet,
+    fmt::Display,
     sync::{Arc, Barrier},
 };
 use util::{run_and_report_error, DiscordInteraction};
@@ -43,14 +44,13 @@ async fn main() -> anyhow::Result<()> {
         fn process_token(
             token_tx: &flume::Sender<Token>,
             token: llama_rs::OutputToken,
-        ) -> anyhow::Result<()> {
+        ) -> Result<(), SendError> {
             token_tx
                 .send(match token {
                     llama_rs::OutputToken::Token(t) => Token::Token(t.to_string()),
                     llama_rs::OutputToken::EndOfText => Token::EndOfText,
                 })
-                .ok()
-                .context("send error")
+                .map_err(|_| SendError)
         }
 
         fn process_incoming_request(
@@ -64,7 +64,6 @@ async fn main() -> anyhow::Result<()> {
 
             let params = llama_rs::InferenceParameters {
                 n_threads: thread_count,
-                n_predict: 0,
                 n_batch: request.batch_size,
                 top_k: request.top_k.try_into()?,
                 top_p: request.top_p,
@@ -72,9 +71,11 @@ async fn main() -> anyhow::Result<()> {
                 temp: request.temperature,
             };
 
-            session.feed_prompt(&model, &vocab, &params, &request.prompt, |t| {
-                process_token(&request.token_tx, t).unwrap()
-            })?;
+            session
+                .feed_prompt(&model, &vocab, &params, &request.prompt, |t| {
+                    process_token(&request.token_tx, t)
+                })
+                .map_err(|e| anyhow::Error::msg(e.to_string()))?;
 
             while let Ok(token) = session.infer_next_token(&model, &vocab, &params, rng) {
                 process_token(&request.token_tx, token)?;
@@ -131,6 +132,15 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[derive(Debug)]
+struct SendError;
+impl Display for SendError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "failed to send message to channel")
+    }
+}
+impl std::error::Error for SendError {}
 
 struct GenerationRequest {
     prompt: String,
