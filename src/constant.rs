@@ -7,4 +7,5 @@ pub mod value {
     pub const TEMPERATURE: &str = "temperature";
     pub const TOP_K: &str = "top_k";
     pub const TOP_P: &str = "top_p";
+    pub const SEED: &str = "seed";
 }

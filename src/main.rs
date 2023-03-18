@@ -1,4 +1,5 @@
 use anyhow::Context as AnyhowContext;
+use rand::SeedableRng;
 use serenity::{
     async_trait,
     builder::CreateComponents,
@@ -62,8 +63,13 @@ async fn main() -> anyhow::Result<()> {
             vocab: &llama_rs::Vocabulary,
             cancel_rx: &flume::Receiver<MessageId>,
             thread_count: i32,
-            rng: &mut impl rand::Rng,
         ) -> anyhow::Result<()> {
+            let mut rng = if let Some(seed) = request.seed {
+                rand::rngs::StdRng::seed_from_u64(seed)
+            } else {
+                rand::rngs::StdRng::from_entropy()
+            };
+
             let mut session = model.start_session(request.repeat_penalty_last_n_token_count);
 
             let params = llama_rs::InferenceParameters {
@@ -81,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
                 })
                 .map_err(|e| anyhow::Error::msg(e.to_string()))?;
 
-            while let Ok(token) = session.infer_next_token(&model, &vocab, &params, rng) {
+            while let Ok(token) = session.infer_next_token(&model, &vocab, &params, &mut rng) {
                 let cancellation_requests: HashSet<_> = cancel_rx.drain().collect();
                 if cancellation_requests.contains(&request.message_id) {
                     request
@@ -107,7 +113,6 @@ async fn main() -> anyhow::Result<()> {
 
             barrier.wait();
 
-            let mut rng = rand::thread_rng();
             loop {
                 if let Ok(request) = request_rx.try_recv() {
                     match process_incoming_request(
@@ -116,7 +121,6 @@ async fn main() -> anyhow::Result<()> {
                         &vocab,
                         &cancel_rx,
                         thread_count,
-                        &mut rng,
                     ) {
                         Ok(_) => {}
                         Err(e) => request.token_tx.send(Token::Error(e.to_string())).unwrap(),
@@ -172,6 +176,7 @@ struct GenerationRequest {
     top_p: f32,
     token_tx: flume::Sender<Token>,
     message_id: MessageId,
+    seed: Option<u64>,
 }
 
 enum Token {
@@ -293,9 +298,16 @@ fn create_parameters<'a>(
         .create_option(|opt| {
             opt.name(constant::value::TOP_P)
                 .kind(CommandOptionType::Number)
-                .description("The cummulative probability after which no more words are kept for sampling.")
+                .description("The cumulative probability after which no more words are kept for sampling.")
                 .min_number_value(0.0)
                 .max_number_value(1.0)
+                .required(false)
+        })
+        .create_option(|opt| {
+            opt.name(constant::value::SEED)
+                .kind(CommandOptionType::Integer)
+                .description("The seed to use for sampling.")
+                .min_int_value(0)
                 .required(false)
         })
 }
@@ -427,6 +439,10 @@ async fn hallucinate(
         .and_then(value_to_number)
         .unwrap_or(0.95) as f32;
 
+    let seed = util::get_value(options, v::SEED)
+        .and_then(value_to_integer)
+        .map(|i| i as u64);
+
     let (token_tx, token_rx) = flume::unbounded();
     request_tx.send(GenerationRequest {
         prompt: prompt.clone(),
@@ -438,6 +454,7 @@ async fn hallucinate(
         top_p,
         token_tx,
         message_id,
+        seed,
     })?;
 
     let mut seen_token = false;
