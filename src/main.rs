@@ -1,6 +1,7 @@
 use anyhow::Context as AnyhowContext;
 use serenity::{
     async_trait,
+    builder::CreateComponents,
     client::{Context, EventHandler},
     futures::StreamExt,
     http::Http,
@@ -37,6 +38,8 @@ async fn main() -> anyhow::Result<()> {
     let thread_count: i32 = config.inference.thread_count.try_into()?;
 
     let (request_tx, request_rx) = flume::unbounded::<GenerationRequest>();
+    let (cancel_tx, cancel_rx) = flume::unbounded::<MessageId>();
+
     let barrier = Arc::new(Barrier::new(2));
     let model_thread = std::thread::spawn({
         let barrier = barrier.clone();
@@ -57,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
             request: &GenerationRequest,
             model: &llama_rs::Model,
             vocab: &llama_rs::Vocabulary,
+            cancel_rx: &flume::Receiver<MessageId>,
             thread_count: i32,
             rng: &mut impl rand::Rng,
         ) -> anyhow::Result<()> {
@@ -78,6 +82,15 @@ async fn main() -> anyhow::Result<()> {
                 .map_err(|e| anyhow::Error::msg(e.to_string()))?;
 
             while let Ok(token) = session.infer_next_token(&model, &vocab, &params, rng) {
+                let cancellation_requests: HashSet<_> = cancel_rx.drain().collect();
+                if cancellation_requests.contains(&request.message_id) {
+                    request
+                        .token_tx
+                        .send(Token::Error("The generation was cancelled.".to_string()))
+                        .map_err(|_| SendError)?;
+                    break;
+                }
+
                 process_token(&request.token_tx, token)?;
             }
 
@@ -97,8 +110,14 @@ async fn main() -> anyhow::Result<()> {
             let mut rng = rand::thread_rng();
             loop {
                 if let Ok(request) = request_rx.try_recv() {
-                    match process_incoming_request(&request, &model, &vocab, thread_count, &mut rng)
-                    {
+                    match process_incoming_request(
+                        &request,
+                        &model,
+                        &vocab,
+                        &cancel_rx,
+                        thread_count,
+                        &mut rng,
+                    ) {
                         Ok(_) => {}
                         Err(e) => request.token_tx.send(Token::Error(e.to_string())).unwrap(),
                     }
@@ -122,6 +141,7 @@ async fn main() -> anyhow::Result<()> {
     .event_handler(Handler {
         _model_thread: model_thread,
         request_tx,
+        cancel_tx,
     })
     .await
     .context("Error creating client")?;
@@ -151,6 +171,7 @@ struct GenerationRequest {
     top_k: usize,
     top_p: f32,
     token_tx: flume::Sender<Token>,
+    message_id: MessageId,
 }
 
 enum Token {
@@ -162,6 +183,7 @@ enum Token {
 struct Handler {
     _model_thread: std::thread::JoinHandle<()>,
     request_tx: flume::Sender<GenerationRequest>,
+    cancel_tx: flume::Sender<MessageId>,
 }
 
 async fn ready_handler(http: &Http) -> anyhow::Result<()> {
@@ -314,6 +336,23 @@ impl EventHandler for Handler {
                     .await;
                 }
             }
+            Interaction::MessageComponent(cmp) => {
+                if cmp.data.custom_id == "cancel"
+                    && cmp
+                        .message
+                        .interaction
+                        .as_ref()
+                        .map(|i| i.user == cmp.user)
+                        .unwrap_or_default()
+                {
+                    self.cancel_tx.send(cmp.message.id).ok();
+                    cmp.create_interaction_response(http, |r| {
+                        r.kind(InteractionResponseType::DeferredUpdateMessage)
+                    })
+                    .await
+                    .ok();
+                }
+            }
             _ => {}
         };
     }
@@ -358,6 +397,8 @@ async fn hallucinate(
     })
     .await?;
 
+    let message_id = cmd.get_interaction_message(http).await?.id;
+
     let batch_size: usize = util::get_value(options, v::BATCH_SIZE)
         .and_then(value_to_integer)
         .unwrap_or(8)
@@ -396,7 +437,10 @@ async fn hallucinate(
         top_k,
         top_p,
         token_tx,
+        message_id,
     })?;
+
+    let mut seen_token = false;
 
     let last_update_duration =
         std::time::Duration::from_millis(inference.discord_message_update_interval_ms);
@@ -406,6 +450,55 @@ async fn hallucinate(
 
     let mut stream = token_rx.into_stream();
     let mut last_update = std::time::Instant::now();
+
+    while let Some(token) = stream.next().await {
+        if !seen_token {
+            if let Ok(mut r) = cmd.get_interaction_response(http).await {
+                r.edit(http, |r| {
+                    let mut components = CreateComponents::default();
+                    components.create_action_row(|r| {
+                        r.create_button(|b| {
+                            b.custom_id("cancel")
+                                .style(component::ButtonStyle::Danger)
+                                .label("Cancel")
+                        })
+                    });
+                    r.set_components(components)
+                })
+                .await?;
+            }
+        }
+
+        match token {
+            Token::Token(t) => {
+                message += t.as_str();
+                seen_token = true;
+            }
+            Token::EndOfText => {
+                ended = true;
+            }
+            Token::Error(err) => {
+                message = format!("Error: {err}");
+                ended = true;
+                break;
+            }
+        }
+
+        if last_update.elapsed() > last_update_duration {
+            update_msg(cmd, http, &message, &prompt).await?;
+            last_update = std::time::Instant::now();
+        }
+    }
+    if !ended {
+        message += " [generation ended before message end]";
+    }
+
+    if let Ok(mut r) = cmd.get_interaction_response(http).await {
+        r.edit(http, |r| r.set_components(CreateComponents::default()))
+            .await?;
+    }
+
+    update_msg(cmd, http, &message, &prompt).await?;
 
     async fn update_msg(
         cmd: &ApplicationCommandInteraction,
@@ -433,32 +526,6 @@ async fn hallucinate(
 
         Ok(())
     }
-
-    while let Some(token) = stream.next().await {
-        match token {
-            Token::Token(t) => {
-                message += t.as_str();
-            }
-            Token::EndOfText => {
-                ended = true;
-            }
-            Token::Error(err) => {
-                message = format!("Error: {err}");
-                ended = true;
-                break;
-            }
-        }
-
-        if last_update.elapsed() > last_update_duration {
-            update_msg(cmd, http, &message, &prompt).await?;
-            last_update = std::time::Instant::now();
-        }
-    }
-    if !ended {
-        message += " [generation ended before message end]";
-    }
-
-    update_msg(cmd, http, &message, &prompt).await?;
 
     Ok(())
 }
