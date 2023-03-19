@@ -52,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
             token_tx
                 .send(match token {
                     llama_rs::OutputToken::Token(t) => Token::Token(t.to_string()),
-                    llama_rs::OutputToken::EndOfText => Token::EndOfText,
+                    llama_rs::OutputToken::EndOfText => unreachable!(),
                 })
                 .map_err(|_| SendError)
         }
@@ -94,6 +94,10 @@ async fn main() -> anyhow::Result<()> {
                         .token_tx
                         .send(Token::Error("The generation was cancelled.".to_string()))
                         .map_err(|_| SendError)?;
+                    break;
+                }
+
+                if token == llama_rs::OutputToken::EndOfText {
                     break;
                 }
 
@@ -181,7 +185,6 @@ struct GenerationRequest {
 
 enum Token {
     Token(String),
-    EndOfText,
     Error(String),
 }
 
@@ -463,7 +466,6 @@ async fn hallucinate(
         std::time::Duration::from_millis(inference.discord_message_update_interval_ms);
 
     let mut message = String::new();
-    let mut ended = false;
 
     let mut stream = token_rx.into_stream();
     let mut last_update = std::time::Instant::now();
@@ -491,12 +493,8 @@ async fn hallucinate(
                 message += t.as_str();
                 seen_token = true;
             }
-            Token::EndOfText => {
-                ended = true;
-            }
             Token::Error(err) => {
                 message = format!("Error: {err}");
-                ended = true;
                 break;
             }
         }
@@ -505,9 +503,6 @@ async fn hallucinate(
             update_msg(cmd, http, &message, &prompt).await?;
             last_update = std::time::Instant::now();
         }
-    }
-    if !ended {
-        message += " [generation ended before message end]";
     }
 
     if let Ok(mut r) = cmd.get_interaction_response(http).await {
