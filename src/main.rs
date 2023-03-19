@@ -377,10 +377,13 @@ async fn hallucinate(
     cmd: &ApplicationCommandInteraction,
     http: &Http,
     request_tx: flume::Sender<GenerationRequest>,
-    alpaca_format: bool,
+    is_alpaca: bool,
 ) -> anyhow::Result<()> {
     use constant::value as v;
     use util::{value_to_integer, value_to_number, value_to_string};
+
+    const ALPACA_PROMPT_PREFIX: &str = "Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n\n";
+    const ALPACA_PROMPT_SUFFIX: &str = "\n\n### Response:\n\n";
 
     let inference = &Configuration::get().inference;
 
@@ -391,12 +394,6 @@ async fn hallucinate(
 
     let prompt = if inference.replace_newlines {
         prompt.replace("\\n", "\n")
-    } else {
-        prompt
-    };
-
-    let prompt = if alpaca_format {
-        format!("Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n\n{prompt}\n\n### Response:\n")
     } else {
         prompt
     };
@@ -448,7 +445,11 @@ async fn hallucinate(
 
     let (token_tx, token_rx) = flume::unbounded();
     request_tx.send(GenerationRequest {
-        prompt: prompt.clone(),
+        prompt: if is_alpaca {
+            format!("{ALPACA_PROMPT_PREFIX}{prompt}{ALPACA_PROMPT_SUFFIX}")
+        } else {
+            prompt.clone()
+        },
         batch_size,
         repeat_penalty,
         repeat_penalty_last_n_token_count,
@@ -500,7 +501,13 @@ async fn hallucinate(
         }
 
         if last_update.elapsed() > last_update_duration {
-            update_msg(cmd, http, &message, &prompt).await?;
+            update_msg(
+                cmd,
+                http,
+                &fixup_alpaca_message(&message, &prompt, is_alpaca),
+                &prompt,
+            )
+            .await?;
             last_update = std::time::Instant::now();
         }
     }
@@ -510,7 +517,25 @@ async fn hallucinate(
             .await?;
     }
 
-    update_msg(cmd, http, &message, &prompt).await?;
+    update_msg(
+        cmd,
+        http,
+        &fixup_alpaca_message(&message, &prompt, is_alpaca),
+        &prompt,
+    )
+    .await?;
+
+    fn fixup_alpaca_message(message: &str, prompt: &str, is_alpaca: bool) -> String {
+        if !is_alpaca || message.starts_with("Error: ") {
+            return message.to_string();
+        }
+
+        let Some(message) = message.strip_prefix(ALPACA_PROMPT_PREFIX) else { return String::new(); };
+        let Some(response) = message.strip_prefix(prompt) else { return message.to_string(); };
+        let Some(response) = response.strip_prefix(ALPACA_PROMPT_SUFFIX) else { return prompt.to_string(); };
+
+        format!("{prompt}\n{response}")
+    }
 
     async fn update_msg(
         cmd: &ApplicationCommandInteraction,
