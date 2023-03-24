@@ -127,7 +127,11 @@ async fn main() -> anyhow::Result<()> {
                         thread_count,
                     ) {
                         Ok(_) => {}
-                        Err(e) => request.token_tx.send(Token::Error(e.to_string())).unwrap(),
+                        Err(e) => {
+                            if let Err(err) = request.token_tx.send(Token::Error(e.to_string())) {
+                                eprintln!("Failed to send error: {err:?}");
+                            }
+                        }
                     }
                 }
 
