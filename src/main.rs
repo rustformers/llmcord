@@ -75,19 +75,19 @@ async fn main() -> anyhow::Result<()> {
             let params = llama_rs::InferenceParameters {
                 n_threads: thread_count,
                 n_batch: request.batch_size,
-                top_k: request.top_k.try_into()?,
+                top_k: request.top_k,
                 top_p: request.top_p,
                 repeat_penalty: request.repeat_penalty,
                 temp: request.temperature,
             };
 
             session
-                .feed_prompt(&model, &vocab, &params, &request.prompt, |t| {
+                .feed_prompt(model, vocab, &params, &request.prompt, |t| {
                     process_token(&request.token_tx, t)
                 })
                 .map_err(|e| anyhow::Error::msg(e.to_string()))?;
 
-            while let Ok(token) = session.infer_next_token(&model, &vocab, &params, &mut rng) {
+            while let Ok(token) = session.infer_next_token(model, vocab, &params, &mut rng) {
                 let cancellation_requests: HashSet<_> = cancel_rx.drain().collect();
                 if cancellation_requests.contains(&request.message_id) {
                     request
@@ -240,9 +240,9 @@ async fn ready_handler(http: &Http) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn create_parameters<'a>(
-    command: &'a mut serenity::builder::CreateApplicationCommand,
-) -> &'a mut serenity::builder::CreateApplicationCommand {
+fn create_parameters(
+    command: &mut serenity::builder::CreateApplicationCommand,
+) -> &mut serenity::builder::CreateApplicationCommand {
     command
         .create_option(|opt| {
             opt.name(constant::value::REPEAT_PENALTY)
@@ -314,8 +314,8 @@ impl EventHandler for Handler {
                 if let Some(command) = commands.get(name) {
                     run_and_report_error(
                         &cmd,
-                        &http,
-                        hallucinate(&cmd, &http, self.request_tx.clone(), command),
+                        http,
+                        hallucinate(&cmd, http, self.request_tx.clone(), command),
                     )
                     .await;
                 }
