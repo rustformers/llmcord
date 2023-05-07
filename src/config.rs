@@ -1,7 +1,7 @@
 use anyhow::Context;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Configuration {
@@ -17,8 +17,10 @@ impl Default for Configuration {
                 discord_token: None,
             },
             model: Model {
-                path: "models/7B/ggml-alpaca-q4_0.bin".to_string(),
+                path: "models/7B/ggml-alpaca-q4_0.bin".into(),
                 context_token_length: 2048,
+                architecture: llm::ModelArchitecture::Llama.as_tag().to_owned(),
+                prefer_mmap: true,
             },
             inference: Inference {
                 thread_count: 8,
@@ -100,8 +102,15 @@ pub struct Authentication {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Model {
-    pub path: String,
+    pub path: PathBuf,
     pub context_token_length: usize,
+    pub architecture: String,
+    pub prefer_mmap: bool,
+}
+impl Model {
+    pub fn architecture(&self) -> Option<llm::ModelArchitecture> {
+        llm::ModelArchitecture::from_tag(&self.architecture)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]

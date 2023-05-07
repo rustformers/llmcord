@@ -36,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
     Configuration::init()?;
 
     let config = Configuration::get();
-    let thread_count: i32 = config.inference.thread_count.try_into()?;
+    let thread_count: usize = config.inference.thread_count;
 
     let (request_tx, request_rx) = flume::unbounded::<GenerationRequest>();
     let (cancel_tx, cancel_rx) = flume::unbounded::<MessageId>();
@@ -45,24 +45,11 @@ async fn main() -> anyhow::Result<()> {
     let model_thread = std::thread::spawn({
         let barrier = barrier.clone();
 
-        fn process_token(
-            token_tx: &flume::Sender<Token>,
-            token: llama_rs::OutputToken,
-        ) -> Result<(), SendError> {
-            token_tx
-                .send(match token {
-                    llama_rs::OutputToken::Token(t) => Token::Token(t.to_string()),
-                    llama_rs::OutputToken::EndOfText => unreachable!(),
-                })
-                .map_err(|_| SendError)
-        }
-
         fn process_incoming_request(
             request: &GenerationRequest,
-            model: &llama_rs::Model,
-            vocab: &llama_rs::Vocabulary,
+            model: &dyn llm::Model,
             cancel_rx: &flume::Receiver<MessageId>,
-            thread_count: i32,
+            thread_count: usize,
         ) -> anyhow::Result<()> {
             let mut rng = if let Some(seed) = request.seed {
                 rand::rngs::StdRng::seed_from_u64(seed)
@@ -70,48 +57,68 @@ async fn main() -> anyhow::Result<()> {
                 rand::rngs::StdRng::from_entropy()
             };
 
-            let mut session = model.start_session(request.repeat_penalty_last_n_token_count);
+            let mut session = model.start_session(llm::InferenceSessionParameters {
+                repetition_penalty_last_n: request.repeat_penalty_last_n_token_count,
+                ..Default::default()
+            });
 
-            let params = llama_rs::InferenceParameters {
+            let params = llm::InferenceParameters {
                 n_threads: thread_count,
                 n_batch: request.batch_size,
                 top_k: request.top_k,
                 top_p: request.top_p,
                 repeat_penalty: request.repeat_penalty,
-                temp: request.temperature,
+                temperature: request.temperature,
+                bias_tokens: Default::default(),
             };
 
             session
-                .feed_prompt(model, vocab, &params, &request.prompt, |t| {
-                    process_token(&request.token_tx, t)
-                })
-                .map_err(|e| anyhow::Error::msg(e.to_string()))?;
+                .infer_with_params(
+                    model,
+                    &params,
+                    &Default::default(),
+                    &request.prompt,
+                    &mut Default::default(),
+                    &mut rng,
+                    move |t| {
+                        let cancellation_requests: HashSet<_> = cancel_rx.drain().collect();
+                        if cancellation_requests.contains(&request.message_id) {
+                            return Err(CustomInferenceError::new("The generation was cancelled."));
+                        }
 
-            while let Ok(token) = session.infer_next_token(model, vocab, &params, &mut rng) {
-                let cancellation_requests: HashSet<_> = cancel_rx.drain().collect();
-                if cancellation_requests.contains(&request.message_id) {
-                    request
-                        .token_tx
-                        .send(Token::Error("The generation was cancelled.".to_string()))
-                        .map_err(|_| SendError)?;
-                    break;
-                }
+                        request
+                            .token_tx
+                            .send(Token::Token(t.to_string()))
+                            .map_err(|_| {
+                                CustomInferenceError::new("Failed to send token to channel.")
+                            })?;
 
-                if token == llama_rs::OutputToken::EndOfText {
-                    break;
-                }
-
-                process_token(&request.token_tx, token)?;
-            }
+                        Ok(())
+                    },
+                )
+                .map_err(|e| {
+                    anyhow::Error::msg(match e {
+                        llm::InferenceError::UserCallback(e) => e.to_string(),
+                        e => e.to_string(),
+                    })
+                })?;
 
             Ok(())
         }
 
         move || {
-            let (model, vocab) = llama_rs::Model::load(
+            let model = llm::load_dynamic(
+                config
+                    .model
+                    .architecture()
+                    .expect("invalid model architecture specified in config"),
                 &config.model.path,
-                config.model.context_token_length.try_into().unwrap(),
-                |_| {},
+                llm::ModelParameters {
+                    prefer_mmap: config.model.prefer_mmap,
+                    n_context_tokens: config.model.context_token_length,
+                    ..Default::default()
+                },
+                llm::load_progress_callback_stdout,
             )
             .unwrap();
 
@@ -121,8 +128,7 @@ async fn main() -> anyhow::Result<()> {
                 if let Ok(request) = request_rx.try_recv() {
                     match process_incoming_request(
                         &request,
-                        &model,
-                        &vocab,
+                        model.as_ref(),
                         &cancel_rx,
                         thread_count,
                     ) {
@@ -166,13 +172,18 @@ async fn main() -> anyhow::Result<()> {
 }
 
 #[derive(Debug)]
-struct SendError;
-impl Display for SendError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "failed to send message to channel")
+struct CustomInferenceError(String);
+impl CustomInferenceError {
+    fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
     }
 }
-impl std::error::Error for SendError {}
+impl Display for CustomInferenceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+impl std::error::Error for CustomInferenceError {}
 
 struct GenerationRequest {
     prompt: String,
