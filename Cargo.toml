@@ -4,13 +4,11 @@ edition = "2021"
 license = "GPL-3.0-only"
 name = "llmcord"
 repository = "https://github.com/rustformers/llamacord"
-version = "0.1.0"
+version = "0.2.0"
 
 [dependencies]
 anyhow = "1.0.66"
 flume = "0.10"
-once_cell = "1.16.0"
-parking_lot = "0.12.1"
 rand = "0.8.5"
 serde = {version = "1.0.150", features = ["derive"]}
 serenity = {version = "0.11.5", default-features = false, features = ["client", "gateway", "rustls_backend", "model", "collector"]}

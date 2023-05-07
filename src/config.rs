@@ -1,9 +1,8 @@
 use anyhow::Context;
-use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Configuration {
     pub authentication: Authentication,
     pub model: Model,
@@ -63,18 +62,7 @@ impl Default for Configuration {
 impl Configuration {
     const FILENAME: &str = "config.toml";
 
-    pub fn init() -> anyhow::Result<()> {
-        CONFIGURATION
-            .set(Self::load()?)
-            .ok()
-            .context("config already set")
-    }
-
-    pub fn get() -> &'static Self {
-        CONFIGURATION.wait()
-    }
-
-    fn load() -> anyhow::Result<Self> {
+    pub fn load() -> anyhow::Result<Self> {
         let config = if let Ok(file) = std::fs::read_to_string(Self::FILENAME) {
             toml::from_str(&file).context("failed to load config")?
         } else {
@@ -93,14 +81,13 @@ impl Configuration {
         )?)
     }
 }
-static CONFIGURATION: OnceCell<Configuration> = OnceCell::new();
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Authentication {
     pub discord_token: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Model {
     pub path: PathBuf,
     pub context_token_length: usize,
@@ -113,7 +100,7 @@ impl Model {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Inference {
     /// The number of threads to use
     pub thread_count: usize,
@@ -130,7 +117,7 @@ pub struct Inference {
     pub show_prompt_template: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Command {
     pub enabled: bool,
     pub description: String,
