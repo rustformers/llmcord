@@ -22,6 +22,7 @@ impl Default for Configuration {
             },
             inference: Inference {
                 thread_count: 8,
+                batch_size: 8,
                 discord_message_update_interval_ms: 250,
                 replace_newlines: true,
                 show_prompt_template: true,
@@ -105,7 +106,12 @@ pub struct Model {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Inference {
+    /// The number of threads to use
     pub thread_count: usize,
+    /// When the prompt is sent to the model, it will be batched. This
+    /// controls the size of that batch. Larger values will result in
+    /// faster inference, but will use more memory.
+    pub batch_size: usize,
     /// Low values will result in you getting throttled by Discord
     pub discord_message_update_interval_ms: u64,
     /// Whether or not to replace '\n' with newlines

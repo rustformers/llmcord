@@ -247,14 +247,6 @@ fn create_parameters<'a>(
 ) -> &'a mut serenity::builder::CreateApplicationCommand {
     command
         .create_option(|opt| {
-            opt.name(constant::value::BATCH_SIZE)
-                .kind(CommandOptionType::Integer)
-                .description("The number of tokens taken from the prompt to feed the network. Does not affect generation.")
-                .min_int_value(0)
-                .max_int_value(64)
-                .required(false)
-        })
-        .create_option(|opt| {
             opt.name(constant::value::REPEAT_PENALTY)
                 .kind(CommandOptionType::Number)
                 .description("The penalty for repeating tokens. Higher values make the generation less likely to get into a loop.")
@@ -387,11 +379,6 @@ async fn hallucinate(
 
     let message_id = cmd.get_interaction_message(http).await?.id;
 
-    let batch_size: usize = util::get_value(options, v::BATCH_SIZE)
-        .and_then(value_to_integer)
-        .unwrap_or(8)
-        .try_into()?;
-
     let repeat_penalty = util::get_value(options, v::REPEAT_PENALTY)
         .and_then(value_to_number)
         .unwrap_or(1.3) as f32;
@@ -422,7 +409,7 @@ async fn hallucinate(
     let (token_tx, token_rx) = flume::unbounded();
     request_tx.send(GenerationRequest {
         prompt: command.prompt.replace("{{PROMPT}}", &prompt),
-        batch_size,
+        batch_size: inference.batch_size,
         repeat_penalty,
         repeat_penalty_last_n_token_count,
         temperature,
