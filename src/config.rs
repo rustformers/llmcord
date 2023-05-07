@@ -33,7 +33,7 @@ impl Default for Configuration {
                     Command {
                         enabled: false,
                         description: "Hallucinates some text.".into(),
-                        prompt: "{PROMPT}".into(),
+                        prompt: "{{PROMPT}}".into(),
                     },
                 ),
                 (

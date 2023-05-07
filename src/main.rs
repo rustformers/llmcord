@@ -38,8 +38,6 @@ async fn main() -> anyhow::Result<()> {
     let config = Configuration::get();
     let thread_count: i32 = config.inference.thread_count.try_into()?;
 
-    assert_eq!(config.inference.show_prompt_template, true);
-
     let (request_tx, request_rx) = flume::unbounded::<GenerationRequest>();
     let (cancel_tx, cancel_rx) = flume::unbounded::<MessageId>();
 
@@ -356,22 +354,31 @@ async fn hallucinate(
     let inference = &Configuration::get().inference;
 
     let options = &cmd.data.options;
-    let prompt = util::get_value(options, v::PROMPT)
+    let user_prompt = util::get_value(options, v::PROMPT)
         .and_then(value_to_string)
         .context("no prompt specified")?;
 
-    let prompt = if inference.replace_newlines {
-        prompt.replace("\\n", "\n")
+    let user_prompt = if inference.replace_newlines {
+        user_prompt.replace("\\n", "\n")
     } else {
-        prompt
+        user_prompt
     };
+
+    let processed_prompt = command.prompt.replace("{{PROMPT}}", &user_prompt);
 
     cmd.create_interaction_response(http, |response| {
         response
             .kind(InteractionResponseType::ChannelMessageWithSource)
             .interaction_response_data(|message| {
                 message
-                    .content(format!("~~{prompt}~~"))
+                    .content(format!(
+                        "~~{}~~",
+                        if inference.show_prompt_template {
+                            &processed_prompt
+                        } else {
+                            &user_prompt
+                        }
+                    ))
                     .allowed_mentions(|m| m.empty_roles().empty_users().empty_parse())
             })
     })
@@ -408,7 +415,7 @@ async fn hallucinate(
 
     let (token_tx, token_rx) = flume::unbounded();
     request_tx.send(GenerationRequest {
-        prompt: command.prompt.replace("{{PROMPT}}", &prompt),
+        prompt: processed_prompt.clone(),
         batch_size: inference.batch_size,
         repeat_penalty,
         repeat_penalty_last_n_token_count,
@@ -460,7 +467,16 @@ async fn hallucinate(
         }
 
         if last_update.elapsed() > last_update_duration {
-            update_msg(cmd, http, &message, &prompt).await?;
+            update_msg(
+                cmd,
+                http,
+                &message,
+                &user_prompt,
+                &processed_prompt,
+                &command.prompt,
+                inference.show_prompt_template,
+            )
+            .await?;
             last_update = std::time::Instant::now();
         }
     }
@@ -470,17 +486,38 @@ async fn hallucinate(
             .await?;
     }
 
-    update_msg(cmd, http, &message, &prompt).await?;
+    update_msg(
+        cmd,
+        http,
+        &message,
+        &user_prompt,
+        &processed_prompt,
+        &command.prompt,
+        inference.show_prompt_template,
+    )
+    .await?;
 
     async fn update_msg(
         cmd: &ApplicationCommandInteraction,
         http: &Http,
         message: &str,
-        prompt: &str,
+        user_prompt: &str,
+        processed_prompt: &str,
+        prompt_template: &str,
+        show_prompt_template: bool,
     ) -> anyhow::Result<()> {
-        let output = match message.strip_prefix(prompt) {
-            Some(msg) => format!("**{prompt}**{msg}"),
-            None => match prompt.strip_prefix(message) {
+        let (message, display_prompt) = if !show_prompt_template {
+            (
+                fixup_message(message, user_prompt, prompt_template),
+                user_prompt,
+            )
+        } else {
+            (message.to_string(), processed_prompt)
+        };
+
+        let output = match message.strip_prefix(display_prompt) {
+            Some(msg) => format!("**{display_prompt}**{msg}"),
+            None => match display_prompt.strip_prefix(&message) {
                 Some(ungenerated) => {
                     if message.is_empty() {
                         format!("~~{ungenerated}~~")
@@ -497,6 +534,27 @@ async fn hallucinate(
         }
 
         Ok(())
+    }
+
+    fn fixup_message(message: &str, prompt: &str, prompt_template: &str) -> String {
+        if message.starts_with("Error: ") {
+            return message.to_string();
+        }
+
+        let (prefix, suffix) = if prompt_template.contains("{{PROMPT}}") {
+            let (prefix, suffix) = prompt_template.split_once("{{PROMPT}}").unwrap();
+            (prefix, suffix)
+        } else {
+            ("", "")
+        };
+
+        let Some(message) = message.strip_prefix(prefix) else { return String::new(); };
+        let Some(response) = message.strip_prefix(prompt) else { return message.to_string(); };
+        let Some(response) = response.strip_prefix(suffix) else { return prompt.to_string(); };
+
+        let newline = if suffix.ends_with('\n') { "\n" } else { "" };
+
+        format!("{prompt}{newline}{response}")
     }
 
     Ok(())
