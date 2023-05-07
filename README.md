@@ -1,17 +1,16 @@
-# llamacord
+# llmcord
 
-![llamacord logo: a vaguely Discord Clyde-looking llama](docs/llamacord.png)
+![llmcord logo: a vaguely Discord Clyde-looking llama](docs/llmcord.png)
 
-A Discord bot, written in Rust, that generates responses using the LLaMA language model.
+A Discord bot, written in Rust, that generates responses using any language model supported by `llm`.
 
-Built on top of [llama-rs](https://github.com/setzer22/llama-rs).
+Built on top of [llm](https://crates.io/crates/llm).
 
 ## Setup
 
 ### Model
 
-- Obtain the LLaMA weights from a reputable source (like Meta).
-- Convert and quantize them to GGML-q4 format using [llama.cpp](https://github.com/ggerganov/llama.cpp#usage).
+See [llm's README](https://github.com/rustformers/llm#getting-models).
 
 ### Bot
 
@@ -26,6 +25,6 @@ Built on top of [llama-rs](https://github.com/setzer22/llama-rs).
 #### Application
 
 - Install Rust 1.68 or above using `rustup`.
-- Run `cargo run --release` to start llamacord. This will auto-generate a configuration file, and then quit.
-- Fill in the configuration file with the required details, including the path to the quantized model.
-- You can then run llamacord to your heart's content.
+- Run `cargo run --release` to start llmcord. This will auto-generate a configuration file, and then quit.
+- Fill in the configuration file with the required details, including the path to the model.
+- You can then run llmcord to your heart's content.

@@ -598,23 +598,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "99227334921fae1a979cf0bfdfcc6b3e5ce376ef57e16fb6fb3ea2ed6095f80c"
 
 [[package]]
-name = "llamacord"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "flume",
- "indoc",
- "llm",
- "once_cell",
- "parking_lot",
- "rand",
- "serde",
- "serenity",
- "tokio",
- "toml",
-]
-
-[[package]]
 name = "llm"
 version = "0.1.0-rc2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -699,6 +682,23 @@ checksum = "c0fc6c0a202f6649716b6ceed4007448a5b9db4f161d9143a719cc79fcf3f45c"
 dependencies = [
  "bytemuck",
  "llm-base",
+]
+
+[[package]]
+name = "llmcord"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "flume",
+ "indoc",
+ "llm",
+ "once_cell",
+ "parking_lot",
+ "rand",
+ "serde",
+ "serenity",
+ "tokio",
+ "toml",
 ]
 
 [[package]]

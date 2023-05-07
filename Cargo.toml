@@ -1,9 +1,9 @@
 [package]
-description = "A Discord bot, written in Rust, that generates responses using the LLaMA language model."
+description = "A Discord bot, written in Rust, that generates responses using any language model supported by `llm`."
 edition = "2021"
 license = "GPL-3.0-only"
-name = "llamacord"
-repository = "https://github.com/philpax/llamacord"
+name = "llmcord"
+repository = "https://github.com/rustformers/llamacord"
 version = "0.1.0"
 
 [dependencies]
