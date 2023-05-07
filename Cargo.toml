@@ -18,3 +18,4 @@ tokio = {version = "1.0", features = ["full"]}
 toml = "0.7.3"
 
 llama-rs = {git = "https://github.com/setzer22/llama-rs.git"}
+indoc = "2.0.1"

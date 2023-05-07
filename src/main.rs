@@ -38,6 +38,8 @@ async fn main() -> anyhow::Result<()> {
     let config = Configuration::get();
     let thread_count: i32 = config.inference.thread_count.try_into()?;
 
+    assert_eq!(config.inference.show_prompt_template, true);
+
     let (request_tx, request_rx) = flume::unbounded::<GenerationRequest>();
     let (cancel_tx, cancel_rx) = flume::unbounded::<MessageId>();
 
@@ -209,9 +211,9 @@ async fn ready_handler(http: &Http) -> anyhow::Result<()> {
 
     let our_commands: HashSet<_> = config
         .commands
-        .all(config.model.is_alpaca)
         .iter()
-        .cloned()
+        .filter(|(_, v)| v.enabled)
+        .map(|(k, _)| k.as_str())
         .collect();
 
     if registered_commands != our_commands {
@@ -221,38 +223,18 @@ async fn ready_handler(http: &Http) -> anyhow::Result<()> {
             .await?;
     }
 
-    if config.model.is_alpaca {
-        Command::create_global_application_command(http, |command| {
-            command
-                .name(&config.commands.alpaca)
-                .description(
-                    "Hallucinates some text using the LLaMA language model and the Alpaca prompt.",
-                )
+    for (name, command) in config.commands.iter().filter(|(_, v)| v.enabled) {
+        Command::create_global_application_command(http, |cmd| {
+            cmd.name(name)
+                .description(command.description.as_str())
                 .create_option(|opt| {
                     opt.name(constant::value::PROMPT)
-                        .description("The prompt for Alpaca.")
+                        .description("The prompt.")
                         .kind(CommandOptionType::String)
                         .required(true)
                 });
 
-            create_parameters(command)
-        })
-        .await?;
-    } else {
-        Command::create_global_application_command(http, |command| {
-            command
-                .name(&config.commands.hallucinate)
-                .description("Hallucinates some text using the LLaMA language model.")
-                .create_option(|opt| {
-                    opt.name(constant::value::PROMPT)
-                    .description(
-                        "The prompt for LLaMA. Note that LLaMA requires autocomplete-like prompts.",
-                    )
-                    .kind(CommandOptionType::String)
-                    .required(true)
-                });
-
-            create_parameters(command)
+            create_parameters(cmd)
         })
         .await?;
     }
@@ -339,18 +321,11 @@ impl EventHandler for Handler {
                 let name = cmd.data.name.as_str();
                 let commands = &Configuration::get().commands;
 
-                if name == commands.hallucinate {
+                if let Some(command) = commands.get(name) {
                     run_and_report_error(
                         &cmd,
                         &http,
-                        hallucinate(&cmd, &http, self.request_tx.clone(), false),
-                    )
-                    .await;
-                } else if name == commands.alpaca {
-                    run_and_report_error(
-                        &cmd,
-                        &http,
-                        hallucinate(&cmd, &http, self.request_tx.clone(), true),
+                        hallucinate(&cmd, &http, self.request_tx.clone(), command),
                     )
                     .await;
                 }
@@ -381,13 +356,10 @@ async fn hallucinate(
     cmd: &ApplicationCommandInteraction,
     http: &Http,
     request_tx: flume::Sender<GenerationRequest>,
-    is_alpaca: bool,
+    command: &config::Command,
 ) -> anyhow::Result<()> {
     use constant::value as v;
     use util::{value_to_integer, value_to_number, value_to_string};
-
-    const ALPACA_PROMPT_PREFIX: &str = "Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n\n";
-    const ALPACA_PROMPT_SUFFIX: &str = "\n\n### Response:\n\n";
 
     let inference = &Configuration::get().inference;
 
@@ -449,11 +421,7 @@ async fn hallucinate(
 
     let (token_tx, token_rx) = flume::unbounded();
     request_tx.send(GenerationRequest {
-        prompt: if is_alpaca {
-            format!("{ALPACA_PROMPT_PREFIX}{prompt}{ALPACA_PROMPT_SUFFIX}")
-        } else {
-            prompt.clone()
-        },
+        prompt: command.prompt.replace("{{PROMPT}}", &prompt),
         batch_size,
         repeat_penalty,
         repeat_penalty_last_n_token_count,
@@ -505,13 +473,7 @@ async fn hallucinate(
         }
 
         if last_update.elapsed() > last_update_duration {
-            update_msg(
-                cmd,
-                http,
-                &fixup_alpaca_message(&message, &prompt, is_alpaca),
-                &prompt,
-            )
-            .await?;
+            update_msg(cmd, http, &message, &prompt).await?;
             last_update = std::time::Instant::now();
         }
     }
@@ -521,25 +483,7 @@ async fn hallucinate(
             .await?;
     }
 
-    update_msg(
-        cmd,
-        http,
-        &fixup_alpaca_message(&message, &prompt, is_alpaca),
-        &prompt,
-    )
-    .await?;
-
-    fn fixup_alpaca_message(message: &str, prompt: &str, is_alpaca: bool) -> String {
-        if !is_alpaca || message.starts_with("Error: ") {
-            return message.to_string();
-        }
-
-        let Some(message) = message.strip_prefix(ALPACA_PROMPT_PREFIX) else { return String::new(); };
-        let Some(response) = message.strip_prefix(prompt) else { return message.to_string(); };
-        let Some(response) = response.strip_prefix(ALPACA_PROMPT_SUFFIX) else { return prompt.to_string(); };
-
-        format!("{prompt}\n{response}")
-    }
+    update_msg(cmd, http, &message, &prompt).await?;
 
     async fn update_msg(
         cmd: &ApplicationCommandInteraction,

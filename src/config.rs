@@ -1,14 +1,61 @@
 use anyhow::Context;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::HashMap;
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Configuration {
     pub authentication: Authentication,
     pub model: Model,
     pub inference: Inference,
-    pub commands: Commands,
+    pub commands: HashMap<String, Command>,
+}
+impl Default for Configuration {
+    fn default() -> Self {
+        Self {
+            authentication: Authentication {
+                discord_token: None,
+            },
+            model: Model {
+                path: "models/7B/ggml-alpaca-q4_0.bin".to_string(),
+                context_token_length: 2048,
+            },
+            inference: Inference {
+                thread_count: 8,
+                discord_message_update_interval_ms: 250,
+                replace_newlines: true,
+                show_prompt_template: true,
+            },
+            commands: HashMap::from_iter([
+                (
+                    "hallucinate".into(),
+                    Command {
+                        enabled: false,
+                        description: "Hallucinates some text.".into(),
+                        prompt: "{PROMPT}".into(),
+                    },
+                ),
+                (
+                    "alpaca".into(),
+                    Command {
+                        enabled: false,
+                        description: "Responds to the provided instruction.".into(),
+                        prompt: indoc::indoc! {
+                            "Below is an instruction that describes a task. Write a response that appropriately completes the request.
+
+                            ### Instruction:
+                            
+                            {{PROMPT}}
+                            
+                            ### Response:
+                            
+                            "
+                        }.into(),
+                    },
+                ),
+            ]),
+        }
+    }
 }
 impl Configuration {
     const FILENAME: &str = "config.toml";
@@ -49,28 +96,11 @@ static CONFIGURATION: OnceCell<Configuration> = OnceCell::new();
 pub struct Authentication {
     pub discord_token: Option<String>,
 }
-impl Default for Authentication {
-    fn default() -> Self {
-        Self {
-            discord_token: None,
-        }
-    }
-}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Model {
     pub path: String,
     pub context_token_length: usize,
-    pub is_alpaca: bool,
-}
-impl Default for Model {
-    fn default() -> Self {
-        Self {
-            path: "models/7B/ggml-model-q4_0.bin".to_string(),
-            context_token_length: 512,
-            is_alpaca: false,
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -80,36 +110,14 @@ pub struct Inference {
     pub discord_message_update_interval_ms: u64,
     /// Whether or not to replace '\n' with newlines
     pub replace_newlines: bool,
-}
-impl Default for Inference {
-    fn default() -> Self {
-        Self {
-            thread_count: 8,
-            discord_message_update_interval_ms: 250,
-            replace_newlines: true,
-        }
-    }
+    /// Whether or not to show the entire prompt template, or just
+    /// what the user specified
+    pub show_prompt_template: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Commands {
-    pub hallucinate: String,
-    pub alpaca: String,
-}
-impl Commands {
-    pub fn all(&self, alpaca_enabled: bool) -> HashSet<&str> {
-        if alpaca_enabled {
-            HashSet::from_iter([self.alpaca.as_str()])
-        } else {
-            HashSet::from_iter([self.hallucinate.as_str()])
-        }
-    }
-}
-impl Default for Commands {
-    fn default() -> Self {
-        Self {
-            hallucinate: "hallucinate".to_string(),
-            alpaca: "alpaca".to_string(),
-        }
-    }
+pub struct Command {
+    pub enabled: bool,
+    pub description: String,
+    pub prompt: String,
 }
