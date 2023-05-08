@@ -76,10 +76,7 @@ fn process_incoming_request(
         rand::rngs::StdRng::from_entropy()
     };
 
-    let mut session = model.start_session(llm::InferenceSessionParameters {
-        repetition_penalty_last_n: request.repeat_penalty_last_n_token_count,
-        ..Default::default()
-    });
+    let mut session = model.start_session(Default::default());
 
     let params = llm::InferenceParameters {
         n_threads: thread_count,
@@ -89,16 +86,19 @@ fn process_incoming_request(
         repeat_penalty: request.repeat_penalty,
         temperature: request.temperature,
         bias_tokens: Default::default(),
+        repetition_penalty_last_n: request.repeat_penalty_last_n_token_count,
     };
 
     session
-        .infer_with_params(
+        .infer(
             model,
-            &params,
-            &Default::default(),
-            &request.prompt,
-            &mut Default::default(),
             &mut rng,
+            &llm::InferenceRequest {
+                prompt: &request.prompt,
+                parameters: Some(&params),
+                ..Default::default()
+            },
+            &mut Default::default(),
             move |t| {
                 let cancellation_requests: HashSet<_> = cancel_rx.drain().collect();
                 if cancellation_requests.contains(&request.message_id) {
