@@ -28,3 +28,20 @@ See [llm's README](https://github.com/rustformers/llm#getting-models).
 - Run `cargo run --release` to start llmcord. This will auto-generate a configuration file, and then quit.
 - Fill in the configuration file with the required details, including the path to the model.
 - You can then run llmcord to your heart's content.
+
+Note that you can define your own commands in the configuration, like so:
+
+```toml
+[commands.makecaption]
+enabled = true
+description = "Attempts to make an image description for the given prompt."
+prompt = """Below is an instruction that describes a task. Write a response that appropriately completes the request.
+
+### Instruction:
+
+Create an evocative image description for "{{PROMPT}}".
+
+### Response:
+
+"""
+```
