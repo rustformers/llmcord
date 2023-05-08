@@ -18,7 +18,7 @@ impl Default for Configuration {
             model: Model {
                 path: "models/7B/ggml-alpaca-q4_0.bin".into(),
                 context_token_length: 2048,
-                architecture: llm::ModelArchitecture::Llama.as_tag().to_owned(),
+                architecture: llm::ModelArchitecture::Llama.to_string(),
                 prefer_mmap: true,
             },
             inference: Inference {
@@ -96,7 +96,7 @@ pub struct Model {
 }
 impl Model {
     pub fn architecture(&self) -> Option<llm::ModelArchitecture> {
-        llm::ModelArchitecture::from_tag(&self.architecture)
+        self.architecture.parse().ok()
     }
 }
 

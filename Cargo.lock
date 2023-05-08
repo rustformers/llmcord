@@ -388,9 +388,9 @@ dependencies = [
 
 [[package]]
 name = "ggml"
-version = "0.1.0-rc2"
+version = "0.1.0-rc3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c1a4055eb4ad40514b3ed363c24c53aabeb047ccb3bfc6ecbcf9ea821ad7056"
+checksum = "68fc47b7709cbee8f464ae73bddbb2dde59396b41ef2dedfba0429dd145f67c0"
 dependencies = [
  "ggml-sys",
  "thiserror",
@@ -398,9 +398,9 @@ dependencies = [
 
 [[package]]
 name = "ggml-sys"
-version = "0.1.0-rc2"
+version = "0.1.0-rc3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "323f7ffb5da25b5e52b6a9ab527300dfb60bb29d485d154bd0c32b4f06c8528c"
+checksum = "2f12f02bf97762c7bd186b6af4498f0bcdefa622169485f70157a00b6c480606"
 dependencies = [
  "cc",
 ]
@@ -599,9 +599,9 @@ checksum = "99227334921fae1a979cf0bfdfcc6b3e5ce376ef57e16fb6fb3ea2ed6095f80c"
 
 [[package]]
 name = "llm"
-version = "0.1.0-rc2"
+version = "0.1.0-rc3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ab26844884867c1bf3a9ef0f57d3d341335930f96d537aa15d649014898a30e"
+checksum = "c38fea7f6c4df6460ed2578730b2707da89b4ab7c2915f7cf4188c2d4ef83dbd"
 dependencies = [
  "llm-base",
  "llm-bloom",
@@ -613,9 +613,9 @@ dependencies = [
 
 [[package]]
 name = "llm-base"
-version = "0.1.0-rc2"
+version = "0.1.0-rc3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1a0bead2dab5584d2fd3735399aace33eea650f43bd9408a0be105b55b40abc"
+checksum = "757e2af0be587aae5a5782cb3a68b6ff17cc2b75847667e036b04799174f5f38"
 dependencies = [
  "bytemuck",
  "ggml",
@@ -630,9 +630,9 @@ dependencies = [
 
 [[package]]
 name = "llm-bloom"
-version = "0.1.0-rc2"
+version = "0.1.0-rc3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e33ead5e1f457e0514f52e95fbdead1162b7fd46ea3ce834b309935ab4cefe33"
+checksum = "61beae89b7f6110083b8469b7faf67fb638e222fb5743d97ba0f04cd01532666"
 dependencies = [
  "bytemuck",
  "llm-base",
@@ -640,9 +640,9 @@ dependencies = [
 
 [[package]]
 name = "llm-gpt2"
-version = "0.1.0-rc2"
+version = "0.1.0-rc3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32cb22a4fc3502e82843ab09627833cc60ae116cb384b9860930bb898c3797df"
+checksum = "13b94e29518ff34dd0eccf4ed70a413472814e2aff445b99f696eb1b17e21fdc"
 dependencies = [
  "bytemuck",
  "llm-base",
@@ -650,9 +650,9 @@ dependencies = [
 
 [[package]]
 name = "llm-gptj"
-version = "0.1.0-rc2"
+version = "0.1.0-rc3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "349d362b6f95b5b9faac0a6bcace56d4ad2e58bc88cab215dcaaad07b7e24f96"
+checksum = "61b07704cf55cde2e415574d4d820e451434f18fad17b4a760d876232bc5c687"
 dependencies = [
  "bytemuck",
  "llm-base",
@@ -660,9 +660,9 @@ dependencies = [
 
 [[package]]
 name = "llm-llama"
-version = "0.1.0-rc2"
+version = "0.1.0-rc3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11088c6baca099a505126240c071917844c7251eac05be3ac048da7530dba04f"
+checksum = "a560fee37167e72b402d97c5988e21a5d9c378bfd477b2853d4086d8601f5cb4"
 dependencies = [
  "bytemuck",
  "llm-base",
@@ -676,9 +676,9 @@ dependencies = [
 
 [[package]]
 name = "llm-neox"
-version = "0.1.0-rc2"
+version = "0.1.0-rc3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0fc6c0a202f6649716b6ceed4007448a5b9db4f161d9143a719cc79fcf3f45c"
+checksum = "6f5f3205897fd2cac7f723970a351bf814eb96f277e6fc71012b74db53a7abc2"
 dependencies = [
  "bytemuck",
  "llm-base",
