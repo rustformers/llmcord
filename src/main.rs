@@ -21,9 +21,10 @@ async fn main() -> anyhow::Result<()> {
         &config.model.path,
         llm::ModelParameters {
             prefer_mmap: config.model.prefer_mmap,
-            n_context_tokens: config.model.context_token_length,
+            context_size: config.model.context_token_length,
             ..Default::default()
         },
+        None,
         llm::load_progress_callback_stdout,
     )?;
 

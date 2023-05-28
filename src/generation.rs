@@ -94,9 +94,10 @@ fn process_incoming_request(
             model,
             &mut rng,
             &llm::InferenceRequest {
-                prompt: &request.prompt,
-                parameters: Some(&params),
-                ..Default::default()
+                prompt: (&request.prompt).into(),
+                parameters: &params,
+                play_back_previous_tokens: false,
+                maximum_token_count: None,
             },
             &mut Default::default(),
             move |t| {
@@ -105,12 +106,18 @@ fn process_incoming_request(
                     return Err(CustomInferenceError::new("The generation was cancelled."));
                 }
 
-                request
-                    .token_tx
-                    .send(Token::Token(t.to_string()))
-                    .map_err(|_| CustomInferenceError::new("Failed to send token to channel."))?;
+                match t {
+                    llm::InferenceResponse::SnapshotToken(t)
+                    | llm::InferenceResponse::PromptToken(t)
+                    | llm::InferenceResponse::InferredToken(t) => {
+                        request.token_tx.send(Token::Token(t)).map_err(|_| {
+                            CustomInferenceError::new("Failed to send token to channel.")
+                        })?
+                    }
+                    llm::InferenceResponse::EotToken => {}
+                }
 
-                Ok(())
+                Ok(llm::InferenceFeedback::Continue)
             },
         )
         .map_err(|e| {
