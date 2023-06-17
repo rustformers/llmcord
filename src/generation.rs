@@ -1,23 +1,23 @@
-use std::{collections::HashSet, fmt::Display, sync::Arc, thread::JoinHandle};
+use std::{collections::HashSet, sync::Arc, thread::JoinHandle};
 
 use rand::SeedableRng;
 use serenity::model::prelude::MessageId;
+use thiserror::Error;
 
 use crate::config::Configuration;
 
-#[derive(Debug)]
-pub struct CustomInferenceError(String);
-impl CustomInferenceError {
-    pub fn new(s: impl Into<String>) -> Self {
-        Self(s.into())
+#[derive(Debug, Error, Clone)]
+pub enum InferenceError {
+    #[error("The generation was cancelled.")]
+    Cancelled,
+    #[error("{0}")]
+    Custom(String),
+}
+impl InferenceError {
+    pub fn custom(s: impl Into<String>) -> Self {
+        Self::Custom(s.into())
     }
 }
-impl Display for CustomInferenceError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-impl std::error::Error for CustomInferenceError {}
 
 pub struct Request {
     pub prompt: String,
@@ -34,7 +34,7 @@ pub struct Request {
 
 pub enum Token {
     Token(String),
-    Error(String),
+    Error(InferenceError),
 }
 
 pub fn make_thread(
@@ -53,7 +53,7 @@ pub fn make_thread(
             ) {
                 Ok(_) => {}
                 Err(e) => {
-                    if let Err(err) = request.token_tx.send(Token::Error(e.to_string())) {
+                    if let Err(err) = request.token_tx.send(Token::Error(e)) {
                         eprintln!("Failed to send error: {err:?}");
                     }
                 }
@@ -69,7 +69,7 @@ fn process_incoming_request(
     model: &dyn llm::Model,
     cancel_rx: &flume::Receiver<MessageId>,
     thread_count: usize,
-) -> anyhow::Result<()> {
+) -> Result<(), InferenceError> {
     let mut rng = if let Some(seed) = request.seed {
         rand::rngs::StdRng::seed_from_u64(seed)
     } else {
@@ -105,29 +105,27 @@ fn process_incoming_request(
             move |t| {
                 let cancellation_requests: HashSet<_> = cancel_rx.drain().collect();
                 if cancellation_requests.contains(&request.message_id) {
-                    return Err(CustomInferenceError::new("The generation was cancelled."));
+                    return Err(InferenceError::Cancelled);
                 }
 
                 match t {
                     llm::InferenceResponse::SnapshotToken(t)
                     | llm::InferenceResponse::PromptToken(t)
-                    | llm::InferenceResponse::InferredToken(t) => {
-                        request.token_tx.send(Token::Token(t)).map_err(|_| {
-                            CustomInferenceError::new("Failed to send token to channel.")
-                        })?
-                    }
+                    | llm::InferenceResponse::InferredToken(t) => request
+                        .token_tx
+                        .send(Token::Token(t))
+                        .map_err(|_| InferenceError::custom("Failed to send token to channel."))?,
                     llm::InferenceResponse::EotToken => {}
                 }
 
                 Ok(llm::InferenceFeedback::Continue)
             },
         )
-        .map_err(|e| {
-            anyhow::Error::msg(match e {
-                llm::InferenceError::UserCallback(e) => e.to_string(),
-                e => e.to_string(),
-            })
-        })?;
-
-    Ok(())
+        .map(|_| ())
+        .map_err(|e| match e {
+            llm::InferenceError::UserCallback(e) => {
+                e.downcast::<InferenceError>().unwrap().as_ref().clone()
+            }
+            e => InferenceError::custom(e.to_string()),
+        })
 }

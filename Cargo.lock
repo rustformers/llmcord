@@ -1123,6 +1123,7 @@ dependencies = [
  "rand",
  "serde",
  "serenity",
+ "thiserror",
  "tokio",
  "toml",
 ]
