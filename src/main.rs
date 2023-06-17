@@ -19,12 +19,12 @@ async fn main() -> anyhow::Result<()> {
             .architecture()
             .expect("invalid model architecture specified in config"),
         &config.model.path,
+        llm::VocabularySource::Model,
         llm::ModelParameters {
             prefer_mmap: config.model.prefer_mmap,
             context_size: config.model.context_token_length,
             ..Default::default()
         },
-        None,
         llm::load_progress_callback_stdout,
     )?;
 

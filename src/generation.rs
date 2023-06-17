@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Display, thread::JoinHandle};
+use std::{collections::HashSet, fmt::Display, sync::Arc, thread::JoinHandle};
 
 use rand::SeedableRng;
 use serenity::model::prelude::MessageId;
@@ -81,12 +81,14 @@ fn process_incoming_request(
     let params = llm::InferenceParameters {
         n_threads: thread_count,
         n_batch: request.batch_size,
-        top_k: request.top_k,
-        top_p: request.top_p,
-        repeat_penalty: request.repeat_penalty,
-        temperature: request.temperature,
-        bias_tokens: Default::default(),
-        repetition_penalty_last_n: request.repeat_penalty_last_n_token_count,
+        sampler: Arc::new(llm::samplers::TopPTopK {
+            top_k: request.top_k,
+            top_p: request.top_p,
+            repeat_penalty: request.repeat_penalty,
+            temperature: request.temperature,
+            bias_tokens: Default::default(),
+            repetition_penalty_last_n: request.repeat_penalty_last_n_token_count,
+        }),
     };
 
     session

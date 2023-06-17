@@ -16,4 +16,4 @@ tokio = {version = "1.0", features = ["full"]}
 toml = "0.7.3"
 indoc = "2.0.1"
 
-llm = { git = "https://github.com/rustformers/llm.git", rev = "1e9372b" }
+llm = { git = "https://github.com/rustformers/llm.git", rev = "e011ce8f8a53b4fe55cc030b216f91625efe46d7" }
