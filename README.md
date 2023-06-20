@@ -47,20 +47,20 @@ Create an evocative image description for "{{PROMPT}}".
 ```
 
 #### Docker
-Before build you need to have the `config.toml` and the `path` and the `model` you want to use
+Before build you need to have the `config.toml` and the `/path/models` where the `model` you want to use
 
-Build a Docker image from a Dockerfile
+To build the Docker run the following command:
 ```sh
 docker build -t llmcord:latest .
 ```
-To run the Docker container and mount the /path/models directory on the host machine to the /usr/src/llmcord/weights directory inside the container, execute the following command:
+To run the Docker container and mount the `/path/models` directory on the host machine to the `/usr/src/llmcord/weights` directory inside the container, execute the following command:
 ```sh
 docker run -v /path/models:/usr/src/llmcord/weights llmcord:latest
 ```
 Ensure that you replace `/path/models` with the actual path where your model is on your host machine to mount the volume.
 
 #### Docker Compose
-set the `path` of the model you want to use in docker-compose.yml
+set the `path` of the model you want to use in `docker-compose.yml`
 ```
 docker compose -p llmcord up -d
 ```
