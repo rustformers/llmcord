@@ -60,7 +60,7 @@ docker run -v /path/models:/usr/src/llmcord/weights llmcord:latest
 Ensure that you replace `/path/models` with the actual path where your model is on your host machine to mount the volume.
 
 #### Docker Compose
-set the `path` of the model you want to use in `docker-compose.yml`
+set the `path` of the model you want to use in `docker-compose.yml`, then execute the following command:
 ```
 docker compose -p llmcord up -d
 ```
