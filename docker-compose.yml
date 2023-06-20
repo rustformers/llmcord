@@ -1,0 +1,11 @@
+version: '3'
+services:
+  llmcord:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: llmcord
+    container_name: llmcord
+    restart: unless-stopped
+    volumes:
+      - ${MY_WEIGHTS}:/usr/src/llmcord/weights
