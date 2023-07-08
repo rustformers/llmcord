@@ -17,4 +17,4 @@ toml = "0.7.3"
 indoc = "2.0.1"
 thiserror = "1.0"
 
-llm = { git = "https://github.com/rustformers/llm.git", rev = "e011ce8f8a53b4fe55cc030b216f91625efe46d7" }
+llm = { git = "https://github.com/rustformers/llm.git", rev = "a69d95341ccc8b62226c74f98be034b62208dc9e" }
