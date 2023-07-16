@@ -20,6 +20,8 @@ async fn main() -> anyhow::Result<()> {
         llm::ModelParameters {
             prefer_mmap: config.model.prefer_mmap,
             context_size: config.model.context_token_length,
+            use_gpu: config.model.use_gpu,
+            gpu_layers: config.model.gpu_layers,
             ..Default::default()
         },
         llm::load_progress_callback_stdout,

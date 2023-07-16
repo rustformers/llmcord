@@ -20,6 +20,8 @@ impl Default for Configuration {
                 context_token_length: 2048,
                 architecture: llm::ModelArchitecture::Llama.to_string(),
                 prefer_mmap: true,
+                use_gpu: true,
+                gpu_layers: None,
             },
             inference: Inference {
                 thread_count: 8,
@@ -46,11 +48,11 @@ impl Default for Configuration {
                             "Below is an instruction that describes a task. Write a response that appropriately completes the request.
 
                             ### Instruction:
-                            
+
                             {{PROMPT}}
-                            
+
                             ### Response:
-                            
+
                             "
                         }.into(),
                     },
@@ -93,6 +95,12 @@ pub struct Model {
     pub context_token_length: usize,
     pub architecture: String,
     pub prefer_mmap: bool,
+    /// Whether or not to use GPU support. Note that `llmcord` must be
+    /// compiled with GPU support for this to work.
+    pub use_gpu: bool,
+    /// The number of layers to offload to the GPU (if `use_gpu` is on).
+    /// If not set, all layers will be offloaded.
+    pub gpu_layers: Option<usize>,
 }
 impl Model {
     pub fn architecture(&self) -> Option<llm::ModelArchitecture> {

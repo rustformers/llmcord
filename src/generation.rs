@@ -4,8 +4,6 @@ use rand::SeedableRng;
 use serenity::model::prelude::MessageId;
 use thiserror::Error;
 
-use crate::config::Configuration;
-
 #[derive(Debug, Error, Clone)]
 pub enum InferenceError {
     #[error("The generation was cancelled.")]
@@ -39,18 +37,12 @@ pub enum Token {
 
 pub fn make_thread(
     model: Box<dyn llm::Model>,
-    config: Configuration,
     request_rx: flume::Receiver<Request>,
     cancel_rx: flume::Receiver<MessageId>,
 ) -> JoinHandle<()> {
     std::thread::spawn(move || loop {
         if let Ok(request) = request_rx.try_recv() {
-            match process_incoming_request(
-                &request,
-                model.as_ref(),
-                &cancel_rx,
-                config.inference.thread_count,
-            ) {
+            match process_incoming_request(&request, model.as_ref(), &cancel_rx) {
                 Ok(_) => {}
                 Err(e) => {
                     if let Err(err) = request.token_tx.send(Token::Error(e)) {
@@ -68,7 +60,6 @@ fn process_incoming_request(
     request: &Request,
     model: &dyn llm::Model,
     cancel_rx: &flume::Receiver<MessageId>,
-    thread_count: usize,
 ) -> Result<(), InferenceError> {
     let mut rng = if let Some(seed) = request.seed {
         rand::rngs::StdRng::seed_from_u64(seed)
@@ -79,8 +70,6 @@ fn process_incoming_request(
     let mut session = model.start_session(Default::default());
 
     let params = llm::InferenceParameters {
-        n_threads: thread_count,
-        n_batch: request.batch_size,
         sampler: Arc::new(llm::samplers::TopPTopK {
             top_k: request.top_k,
             top_p: request.top_p,

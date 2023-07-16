@@ -17,4 +17,9 @@ toml = "0.7.3"
 indoc = "2.0.1"
 thiserror = "1.0"
 
-llm = { git = "https://github.com/rustformers/llm.git", rev = "a69d95341ccc8b62226c74f98be034b62208dc9e" }
+llm = { git = "https://github.com/rustformers/llm.git", rev = "06ad53e" }
+
+[features]
+cublas = ["llm/cublas"]
+clblast = ["llm/clblast"]
+metal = ["llm/metal"]

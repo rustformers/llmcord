@@ -35,7 +35,7 @@ impl Handler {
         let (request_tx, request_rx) = flume::unbounded::<generation::Request>();
         let (cancel_tx, cancel_rx) = flume::unbounded::<MessageId>();
 
-        let _model_thread = generation::make_thread(model, config.clone(), request_rx, cancel_rx);
+        let _model_thread = generation::make_thread(model, request_rx, cancel_rx);
         Self {
             _model_thread,
             config,
