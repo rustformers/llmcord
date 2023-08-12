@@ -145,52 +145,13 @@ async fn ready_handler(http: &Http, config: &Configuration) -> anyhow::Result<()
 fn create_parameters(
     command: &mut serenity::builder::CreateApplicationCommand,
 ) -> &mut serenity::builder::CreateApplicationCommand {
-    command
-        .create_option(|opt| {
-            opt.name(constant::value::REPEAT_PENALTY)
-                .kind(CommandOptionType::Number)
-                .description("The penalty for repeating tokens. Higher values make the generation less likely to get into a loop.")
-                .min_number_value(0.0)
-                .required(false)
-        })
-        .create_option(|opt| {
-            opt.name(constant::value::REPEAT_PENALTY_TOKEN_COUNT)
-                .kind(CommandOptionType::Integer)
-                .description("Size of the 'last N' buffer that is considered for the repeat penalty (in tokens)")
-                .min_int_value(0)
-                .max_int_value(64)
-                .required(false)
-        })
-        .create_option(|opt| {
-            opt.name(constant::value::TEMPERATURE)
-                .kind(CommandOptionType::Number)
-                .description("The temperature used for sampling.")
-                .min_number_value(0.0)
-                .required(false)
-        })
-        .create_option(|opt| {
-            opt.name(constant::value::TOP_K)
-                .kind(CommandOptionType::Integer)
-                .description("The top K words by score are kept during sampling.")
-                .min_int_value(0)
-                .max_int_value(128)
-                .required(false)
-        })
-        .create_option(|opt| {
-            opt.name(constant::value::TOP_P)
-                .kind(CommandOptionType::Number)
-                .description("The cumulative probability after which no more words are kept for sampling.")
-                .min_number_value(0.0)
-                .max_number_value(1.0)
-                .required(false)
-        })
-        .create_option(|opt| {
-            opt.name(constant::value::SEED)
-                .kind(CommandOptionType::Integer)
-                .description("The seed to use for sampling.")
-                .min_int_value(0)
-                .required(false)
-        })
+    command.create_option(|opt| {
+        opt.name(constant::value::SEED)
+            .kind(CommandOptionType::Integer)
+            .description("The seed to use for sampling.")
+            .min_int_value(0)
+            .required(false)
+    })
 }
 
 async fn hallucinate(
@@ -201,7 +162,7 @@ async fn hallucinate(
     command: &config::Command,
 ) -> anyhow::Result<()> {
     use constant::value as v;
-    use util::{value_to_integer, value_to_number, value_to_string};
+    use util::{value_to_integer, value_to_string};
 
     let options = &cmd.data.options;
     let user_prompt = util::get_value(options, v::PROMPT)
@@ -230,29 +191,6 @@ async fn hallucinate(
     let message = cmd.get_interaction_message(http).await?;
     let message_id = message.id;
 
-    let repeat_penalty = util::get_value(options, v::REPEAT_PENALTY)
-        .and_then(value_to_number)
-        .unwrap_or(1.3) as f32;
-
-    let repeat_penalty_last_n_token_count: usize =
-        util::get_value(options, v::REPEAT_PENALTY_TOKEN_COUNT)
-            .and_then(value_to_integer)
-            .unwrap_or(64)
-            .try_into()?;
-
-    let temperature = util::get_value(options, v::TEMPERATURE)
-        .and_then(value_to_number)
-        .unwrap_or(0.8) as f32;
-
-    let top_k: usize = util::get_value(options, v::TOP_K)
-        .and_then(value_to_integer)
-        .unwrap_or(40)
-        .try_into()?;
-
-    let top_p = util::get_value(options, v::TOP_P)
-        .and_then(value_to_number)
-        .unwrap_or(0.95) as f32;
-
     let seed = util::get_value(options, v::SEED)
         .and_then(value_to_integer)
         .map(|i| i as u64);
@@ -261,11 +199,6 @@ async fn hallucinate(
     request_tx.send(generation::Request {
         prompt: outputter.prompts.processed.clone(),
         batch_size: inference.batch_size,
-        repeat_penalty,
-        repeat_penalty_last_n_token_count,
-        temperature,
-        top_k,
-        top_p,
         token_tx,
         message_id,
         seed,

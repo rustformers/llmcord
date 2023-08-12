@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc, thread::JoinHandle};
+use std::{collections::HashSet, thread::JoinHandle};
 
 use rand::SeedableRng;
 use serenity::model::prelude::MessageId;
@@ -20,11 +20,6 @@ impl InferenceError {
 pub struct Request {
     pub prompt: String,
     pub batch_size: usize,
-    pub repeat_penalty: f32,
-    pub repeat_penalty_last_n_token_count: usize,
-    pub temperature: f32,
-    pub top_k: usize,
-    pub top_p: f32,
     pub token_tx: flume::Sender<Token>,
     pub message_id: MessageId,
     pub seed: Option<u64>,
@@ -70,14 +65,7 @@ fn process_incoming_request(
     let mut session = model.start_session(Default::default());
 
     let params = llm::InferenceParameters {
-        sampler: Arc::new(llm::samplers::TopPTopK {
-            top_k: request.top_k,
-            top_p: request.top_p,
-            repeat_penalty: request.repeat_penalty,
-            temperature: request.temperature,
-            bias_tokens: Default::default(),
-            repetition_penalty_last_n: request.repeat_penalty_last_n_token_count,
-        }),
+        sampler: llm::samplers::default_samplers(),
     };
 
     session

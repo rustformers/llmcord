@@ -35,13 +35,6 @@ pub fn value_to_string(v: &CommandDataOptionValue) -> Option<String> {
     }
 }
 
-pub fn value_to_number(v: &CommandDataOptionValue) -> Option<f64> {
-    match v {
-        CommandDataOptionValue::Number(v) => Some(*v),
-        _ => None,
-    }
-}
-
 pub fn value_to_integer(v: &CommandDataOptionValue) -> Option<i64> {
     match v {
         CommandDataOptionValue::Integer(v) => Some(*v),
